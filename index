@@ -11,8 +11,8 @@
 <!-- Troque as duas linhas abaixo pelos dados do SEU projeto Supabase   -->
 <!-- (Project Settings → API → Project URL / anon public key)          -->
 <script>
-  window.SUPABASE_URL = 'https://razuyifigjszdnbyvqce.supabase.co';
-  window.SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJhenV5aWZpZ2pzemRuYnl2cWNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4MTkxMzksImV4cCI6MjA5ODM5NTEzOX0.l5-TZiZ8TvvAyu5diaI3XWWo6pvi5rUf4Vg4kR6E7YU';
+  window.SUPABASE_URL = 'https://sqqlqrtjtfmxahoarotk.supabase.co';
+  window.SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNxcWxxcnRqdGZteGFob2Fyb3RrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4MjE2MjgsImV4cCI6MjA5ODM5NzYyOH0.q6wJEdaTLdsU_QNQEXYBWqS98RwjsvQ3YPZO_i4oUxY';
 </script>
 
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
@@ -223,6 +223,9 @@ label{ font-size:12px; color:var(--muted); text-transform:uppercase; letter-spac
 <div id="root"></div>
 
 <script>
+(function(){
+  if (window.__osEscolhidosBooted) { return; }
+  window.__osEscolhidosBooted = true;
 "use strict";
 // @ts-nocheck
 const { useState, useEffect, useRef, useMemo } = React;
@@ -253,11 +256,15 @@ function initialsOf(name) { return (name || '?').slice(0, 2).toUpperCase(); }
 /* ============================================================
    AUTENTICAÇÃO / TELA DE ABERTURA
    ============================================================ */
+// converte um nome de usuário num "e-mail" técnico interno (nunca é usado pra enviar nada)
+function usernameToEmail(username) {
+    const slug = username.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    return slug + '@escolhidos.local';
+}
 function AuthScreen() {
     const [mode, setMode] = useState('login');
-    const [email, setEmail] = useState('');
+    const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
-    const [name, setName] = useState('');
     const [error, setError] = useState('');
     const [info, setInfo] = useState('');
     const [busy, setBusy] = useState(false);
@@ -267,6 +274,10 @@ function AuthScreen() {
         setInfo('');
         setBusy(true);
         try {
+            if (!username.trim()) {
+                throw new Error('Digite um nome de usuário.');
+            }
+            const email = usernameToEmail(username);
             if (mode === 'login') {
                 const { error } = await supabase.auth.signInWithPassword({ email, password });
                 if (error)
@@ -276,10 +287,10 @@ function AuthScreen() {
                 const { data, error } = await supabase.auth.signUp({ email, password });
                 if (error)
                     throw error;
-                if (name && data.user) {
-                    await supabase.from('profiles').update({ display_name: name }).eq('id', data.user.id);
+                if (data.user) {
+                    await supabase.from('profiles').update({ display_name: username.trim() }).eq('id', data.user.id);
                 }
-                setInfo('Conta criada! Verifique seu e-mail se a confirmação estiver ativa, ou já pode entrar.');
+                setInfo('Conta criada! Já pode ir na aba "Entrar" com esse mesmo nome e senha.');
             }
         }
         catch (err) {
@@ -297,12 +308,9 @@ function AuthScreen() {
             error && React.createElement("div", { className: "auth-error" }, error),
             info && React.createElement("div", { className: "auth-msg" }, info),
             React.createElement("form", { onSubmit: submit },
-                mode === 'signup' && (React.createElement("div", { className: "field" },
-                    React.createElement("label", null, "Nome de exibi\u00E7\u00E3o"),
-                    React.createElement("input", { type: "text", value: name, onChange: e => setName(e.target.value), placeholder: "Como quer ser chamado" }))),
                 React.createElement("div", { className: "field" },
-                    React.createElement("label", null, "E-mail"),
-                    React.createElement("input", { type: "email", required: true, value: email, onChange: e => setEmail(e.target.value), placeholder: "voce@email.com" })),
+                    React.createElement("label", null, "Nome de usu\u00E1rio"),
+                    React.createElement("input", { type: "text", required: true, value: username, onChange: e => setUsername(e.target.value), placeholder: "Como quer ser chamado" })),
                 React.createElement("div", { className: "field" },
                     React.createElement("label", null, "Senha"),
                     React.createElement("input", { type: "password", required: true, minLength: 6, value: password, onChange: e => setPassword(e.target.value), placeholder: "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" })),
@@ -956,12 +964,7 @@ function SystemView({ profile, toast }) {
         React.createElement("h3", { style: { fontFamily: 'var(--font-display)', fontSize: 16, marginBottom: 12 } }, "Jogadores"),
         React.createElement("div", { style: { marginBottom: 28 } }, profiles.map(p => (React.createElement("div", { key: p.id, className: "roll-card", style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
             React.createElement("div", null,
-                React.createElement("b", null, p.display_name),
-                " ",
-                React.createElement("span", { className: "muted", style: { fontSize: 12.5 } },
-                    "(",
-                    p.email,
-                    ")")),
+                React.createElement("b", null, p.display_name)),
             React.createElement("div", { style: { display: 'flex', gap: 10, alignItems: 'center' } },
                 React.createElement("span", { className: "role-pill " + (p.role === 'admin' ? 'role-admin' : 'role-player') }, p.role === 'admin' ? 'Mestre' : 'Jogador'),
                 p.id !== profile.id && React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => toggleRole(p) }, "Alternar")))))),
@@ -1024,6 +1027,7 @@ function App() {
 }
 ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App, null));
 
+})();
 </script>
 </body>
 </html>
