@@ -259,7 +259,7 @@ function initialsOf(name) { return (name || '?').slice(0, 2).toUpperCase(); }
 // converte um nome de usuário num "e-mail" técnico interno (nunca é usado pra enviar nada)
 function usernameToEmail(username) {
     const slug = username.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-    return slug + '@escolhidos.local';
+    return slug + '@escolhidos.app';
 }
 function AuthScreen() {
     const [mode, setMode] = useState('login');
@@ -294,7 +294,27 @@ function AuthScreen() {
             }
         }
         catch (err) {
-            setError(err.message || 'Algo deu errado.');
+            console.error('Erro de autenticação (detalhe completo):', err);
+            let msg = 'Erro desconhecido.';
+            if (err) {
+                if (typeof err === 'string')
+                    msg = err;
+                else if (err.message)
+                    msg = err.message;
+                else if (err.error_description)
+                    msg = err.error_description;
+                else if (err.msg)
+                    msg = err.msg;
+                else {
+                    try {
+                        msg = JSON.stringify(err);
+                    }
+                    catch (_) {
+                        msg = String(err);
+                    }
+                }
+            }
+            setError(msg + ' — abra o console (F12) e me mande o print de "Erro de autenticação (detalhe completo)".');
         }
         setBusy(false);
     }
