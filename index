@@ -11,11 +11,11 @@
 <!-- Troque as duas linhas abaixo pelos dados do SEU projeto Supabase   -->
 <!-- (Project Settings → API → Project URL / anon public key)          -->
 <script>
-  window.SUPABASE_URL = 'https://razuyifigjszdnbyvqce.supabase.co/rest/v1/';
-  window.SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJhenV5aWZpZ2pzemRuYnl2cWNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4MTkxMzksImV4cCI6MjA5ODM5NTEzOX0.l5-TZiZ8TvvAyu5diaI3XWWo6pvi5rUf4Vg4kR6E7YU';
+  window.SUPABASE_URL = 'https://SEU-PROJETO.supabase.co';
+  window.SUPABASE_ANON_KEY = 'SUA-CHAVE-ANON-PUBLICA';
 </script>
 
-<script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -231,6 +231,8 @@ if(!window.supabase || !window.supabase.createClient){
 if(window.SUPABASE_URL.indexOf('SEU-PROJETO') !== -1){
   throw new Error('Configure o SUPABASE_URL e SUPABASE_ANON_KEY no topo do arquivo index.html antes de usar o sistema.');
 }
+// corrige automaticamente se alguém colar a URL da API REST em vez da Project URL
+window.SUPABASE_URL = window.SUPABASE_URL.replace(/\/rest\/v1\/?$/, '');
 const supabase = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
 
 /* ============================================================
