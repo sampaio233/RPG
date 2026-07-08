@@ -1,0 +1,1070 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OS ESCOLHIDOS — Sistema RPG</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+
+<!-- ============ CONFIGURAÇÃO SUPABASE ============ -->
+<!-- Troque as duas linhas abaixo pelos dados do SEU projeto Supabase   -->
+<!-- (Project Settings → API → Project URL / anon public key)          -->
+<script>
+  window.SUPABASE_URL = 'https://SEU-PROJETO.supabase.co';
+  window.SUPABASE_ANON_KEY = 'SUA-CHAVE-ANON-PUBLICA';
+</script>
+
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<style>
+/* ============================================================
+   OS ESCOLHIDOS — design tokens (mesmo tema do sistema anterior)
+   ============================================================ */
+*{ box-sizing:border-box; margin:0; padding:0; }
+:root{
+  --bg:#0a0a12; --panel:#12121e; --panel-raised:#191927; --border:#2a2a3d;
+  --purple:#8b3ffb; --purple-deep:#5a1fb0; --cyan:#29e0ff; --magenta:#ff3d9a; --gold:#ffd23f;
+  --text:#e9e7f7; --muted:#8d8ba8;
+  --font-display:'Cinzel',serif; --font-ui:'Rajdhani',sans-serif;
+}
+html,body,#root{ min-height:100vh; }
+body{ background:var(--bg); color:var(--text); font-family:var(--font-ui); }
+button, input, textarea, select{ font-family:var(--font-ui); }
+button{ cursor:pointer; }
+::-webkit-scrollbar{ width:8px; }
+::-webkit-scrollbar-track{ background:var(--bg); }
+::-webkit-scrollbar-thumb{ background:var(--purple-deep); border-radius:10px; }
+
+.bg-fx{ position:fixed; inset:0; z-index:-1; overflow:hidden; }
+.glow{ position:absolute; width:60vw; height:60vw; border-radius:50%; filter:blur(120px); opacity:.25; }
+.glow-purple{ background:var(--purple); top:-20%; left:-15%; }
+.glow-blue{ background:var(--cyan); bottom:-25%; right:-10%; }
+
+/* topbar */
+.topbar{ position:sticky; top:0; z-index:50; display:flex; align-items:center; justify-content:space-between;
+  flex-wrap:wrap; gap:12px; padding:14px 26px; background:rgba(10,10,18,.8); backdrop-filter:blur(10px); border-bottom:1px solid var(--border); }
+.brand{ display:flex; align-items:center; gap:10px; }
+.brand-mark{ font-size:20px; color:var(--purple); text-shadow:0 0 12px var(--purple); }
+.brand-text{ font-family:var(--font-display); font-weight:900; letter-spacing:3px; font-size:18px;
+  background:linear-gradient(90deg,var(--purple),var(--cyan)); -webkit-background-clip:text; background-clip:text; color:transparent; }
+.main-nav{ display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+.nav-btn{ background:transparent; border:1px solid transparent; color:var(--muted); padding:8px 14px; border-radius:8px;
+  font-weight:600; font-size:14px; transition:all .2s ease; }
+.nav-btn:hover{ color:var(--text); border-color:var(--border); background:var(--panel); }
+.nav-btn.active{ color:var(--bg); background:linear-gradient(90deg,var(--purple),var(--cyan)); }
+.who{ font-size:13px; color:var(--muted); display:flex; align-items:center; gap:10px; }
+.role-pill{ font-size:11px; font-weight:700; padding:3px 9px; border-radius:20px; letter-spacing:.5px; text-transform:uppercase; }
+.role-admin{ background:rgba(255,61,154,.18); color:var(--magenta); }
+.role-player{ background:rgba(41,224,255,.15); color:var(--cyan); }
+
+main{ max-width:1180px; margin:0 auto; padding:36px 22px 100px; }
+.section-title{ font-family:var(--font-display); font-size:24px; letter-spacing:1px; margin-bottom:24px; display:flex; align-items:center; gap:12px; }
+.section-title .tag{ font-size:12px; font-weight:700; color:var(--bg); background:var(--cyan); padding:3px 8px; border-radius:5px; }
+
+.btn-primary{ background:linear-gradient(90deg,var(--purple),var(--cyan)); color:#05050a; border:none; padding:11px 22px;
+  border-radius:9px; font-weight:700; font-size:14px; box-shadow:0 0 20px rgba(139,63,251,.35); transition:transform .15s ease; }
+.btn-primary:hover{ transform:translateY(-2px); }
+.btn-primary:disabled{ opacity:.4; cursor:not-allowed; transform:none; }
+.btn-ghost{ background:transparent; color:var(--text); border:1px solid var(--border); padding:11px 22px; border-radius:9px; font-weight:700; font-size:14px; }
+.btn-ghost:hover{ border-color:var(--purple); color:var(--purple); }
+.btn-sm{ padding:7px 14px; font-size:13px; border-radius:7px; }
+.btn-danger{ background:transparent; border:1px solid var(--magenta); color:var(--magenta); padding:8px 16px; border-radius:8px; font-weight:700; font-size:13px; }
+
+input[type=text], input[type=email], input[type=password], input[type=number], textarea, select{
+  background:#05050a; border:1px solid var(--border); color:var(--text); padding:10px 12px; border-radius:8px;
+  font-size:14px; width:100%; outline:none; }
+input:focus, textarea:focus, select:focus{ border-color:var(--purple); }
+label{ font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; display:block; margin-bottom:6px; }
+.field{ margin-bottom:14px; }
+
+/* splash / auth */
+.splash{ min-height:100vh; display:flex; align-items:center; justify-content:center; flex-direction:column; text-align:center; padding:20px; }
+.splash-title{ font-family:var(--font-display); font-weight:900; letter-spacing:6px; font-size:clamp(38px,9vw,78px);
+  background:linear-gradient(120deg,var(--text) 10%,var(--purple) 45%,var(--cyan) 80%); -webkit-background-clip:text; background-clip:text; color:transparent;
+  text-shadow:0 0 60px rgba(139,63,251,.25); margin-bottom:8px; }
+.splash-sub{ color:var(--muted); letter-spacing:3px; font-size:13px; text-transform:uppercase; margin-bottom:40px; }
+.auth-card{ background:var(--panel); border:1px solid var(--border); border-radius:18px; padding:32px; width:100%; max-width:380px; text-align:left; }
+.auth-tabs{ display:flex; gap:8px; margin-bottom:20px; }
+.auth-tab{ flex:1; background:transparent; border:1px solid var(--border); color:var(--muted); padding:9px; border-radius:8px; font-weight:700; }
+.auth-tab.active{ background:linear-gradient(90deg,var(--purple),var(--cyan)); color:#05050a; border-color:transparent; }
+.auth-error{ color:var(--magenta); font-size:13px; margin-bottom:12px; }
+.auth-msg{ color:var(--cyan); font-size:13px; margin-bottom:12px; }
+
+/* home / story feed */
+.story-post{ background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:20px; margin-bottom:16px; }
+.story-meta{ font-size:12px; color:var(--muted); margin-bottom:8px; display:flex; justify-content:space-between; }
+.story-content{ font-size:15px; line-height:1.7; white-space:pre-wrap; }
+.story-loc{ display:inline-block; margin-top:10px; font-size:12px; color:var(--gold); }
+.composer{ background:var(--panel-raised); border:1px solid var(--border); border-radius:14px; padding:20px; margin-bottom:26px; }
+
+/* character grid + bio */
+.char-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:20px; }
+.char-card{ background:linear-gradient(160deg,var(--panel-raised),var(--panel)); border:1px solid var(--border); border-radius:16px;
+  padding:0; overflow:hidden; cursor:pointer; transition:transform .2s ease, box-shadow .2s ease; }
+.char-card:hover{ transform:translateY(-5px); box-shadow:0 14px 34px rgba(0,0,0,.5); }
+.char-avatar{ width:100%; height:170px; object-fit:cover; background:#05050a; display:block; }
+.char-avatar-placeholder{ width:100%; height:170px; display:flex; align-items:center; justify-content:center;
+  font-family:var(--font-display); font-size:40px; color:var(--purple); background:#05050a; }
+.char-card-body{ padding:16px 18px; }
+.card-top{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px; }
+.card-name{ font-family:var(--font-display); font-size:17px; font-weight:700; }
+.card-power{ color:var(--muted); font-size:12.5px; margin-top:3px; }
+.rank-badge{ width:34px; height:34px; display:flex; align-items:center; justify-content:center; font-family:var(--font-display);
+  font-weight:900; font-size:15px; transform:rotate(45deg); border-radius:7px; flex-shrink:0; }
+.rank-badge span{ transform:rotate(-45deg); }
+.rank-S{ background:linear-gradient(135deg,var(--magenta),#7a0d3f); color:#fff; }
+.rank-A{ background:linear-gradient(135deg,var(--gold),#a67a00); color:#1a1200; }
+.rank-B{ background:linear-gradient(135deg,var(--cyan),#0d7a8a); color:#001a1a; }
+.rank-C{ background:linear-gradient(135deg,#8d8ba8,#3a3850); color:#fff; }
+.card-desc{ font-size:13px; color:var(--muted); line-height:1.5; }
+
+.overlay{ position:fixed; inset:0; background:rgba(5,5,10,.85); backdrop-filter:blur(6px); display:none; align-items:center;
+  justify-content:center; z-index:100; padding:20px; }
+.overlay.open{ display:flex; }
+.sheet{ background:linear-gradient(165deg,var(--panel-raised),var(--panel)); border:1px solid var(--border); border-radius:20px;
+  max-width:680px; width:100%; max-height:88vh; overflow-y:auto; padding:28px; position:relative; }
+.sheet-close{ position:absolute; top:16px; right:18px; background:transparent; border:none; color:var(--muted); font-size:20px; }
+.sheet-close:hover{ color:var(--magenta); }
+.sheet-header{ display:flex; gap:16px; align-items:center; margin-bottom:18px; }
+.sheet-avatar{ width:74px; height:74px; border-radius:12px; object-fit:cover; background:#05050a; }
+.sheet-name{ font-family:var(--font-display); font-size:22px; font-weight:700; }
+.sheet-power{ color:var(--cyan); font-size:13px; margin-top:2px; }
+.tabs{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:18px; border-bottom:1px solid var(--border); padding-bottom:10px; }
+.tab-btn{ background:transparent; border:none; color:var(--muted); font-weight:700; font-size:13px; padding:6px 10px; border-radius:6px; }
+.tab-btn.active{ color:var(--cyan); background:rgba(41,224,255,.1); }
+.tab-panel{ font-size:14px; line-height:1.7; color:var(--text); }
+.tab-panel .muted{ color:var(--muted); }
+
+.stat-row{ display:flex; justify-content:space-between; font-size:13px; color:var(--muted); margin-bottom:5px; }
+.stat-row b{ color:var(--text); }
+.gauge{ height:9px; border-radius:6px; background:rgba(255,255,255,.07); overflow:hidden; margin-bottom:12px; }
+.gauge-fill{ height:100%; border-radius:6px; transition:width .5s ease; }
+.gauge-exp{ background:linear-gradient(90deg,var(--purple),var(--cyan)); }
+.gauge-hp{ background:linear-gradient(90deg,#ff3d9a,#ff7fbb); }
+.gauge-mp{ background:linear-gradient(90deg,#29e0ff,#7ff3ff); }
+.attr-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:14px; }
+.attr-box{ background:rgba(255,255,255,.03); border:1px solid var(--border); border-radius:10px; padding:10px; text-align:center; }
+.attr-label{ font-size:10.5px; color:var(--muted); letter-spacing:1px; text-transform:uppercase; }
+.attr-value{ font-family:var(--font-display); font-size:20px; margin-top:3px; color:var(--cyan); }
+
+.skill-node{ display:flex; align-items:center; gap:14px; background:var(--panel); border:1px solid var(--border); border-radius:12px;
+  padding:14px 16px; margin-bottom:8px; margin-left:calc(var(--depth,0)*28px); }
+.skill-node.unlocked{ border-color:var(--cyan); box-shadow:0 0 14px rgba(41,224,255,.12); }
+.skill-node.locked{ opacity:.6; }
+.skill-icon{ width:38px; height:38px; border-radius:9px; flex-shrink:0; display:flex; align-items:center; justify-content:center;
+  font-size:16px; background:rgba(139,63,251,.12); border:1px solid var(--border); color:var(--purple); }
+.skill-node.unlocked .skill-icon{ background:rgba(41,224,255,.15); color:var(--cyan); border-color:var(--cyan); }
+.skill-body{ flex:1; }
+.skill-name{ font-weight:700; font-size:14px; }
+.skill-req{ font-size:11.5px; color:var(--muted); }
+.skill-desc{ font-size:12.5px; color:var(--muted); margin-top:3px; }
+
+/* admin edit blocks */
+.admin-box{ background:rgba(255,61,154,.06); border:1px dashed var(--magenta); border-radius:12px; padding:16px; margin-top:16px; }
+.admin-box-title{ color:var(--magenta); font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; margin-bottom:10px; }
+.grid2{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+
+/* map */
+.map-wrap{ display:grid; grid-template-columns:1.4fr 1fr; gap:22px; }
+.map-surface{ position:relative; aspect-ratio:4/3; border-radius:16px; overflow:hidden; border:1px solid var(--border);
+  background-size:cover; background-position:center;
+  background-color:#0c0c16; }
+.map-surface.no-image{ background:radial-gradient(circle at 20% 30%, rgba(139,63,251,.3), transparent 45%),
+  radial-gradient(circle at 80% 20%, rgba(255,61,154,.25), transparent 40%), linear-gradient(160deg,#10101c,#05050a 70%); }
+.map-point{ position:absolute; width:18px; height:18px; border-radius:50%; background:var(--purple); border:2px solid var(--text);
+  transform:translate(-50%,-50%); cursor:pointer; z-index:2; box-shadow:0 0 0 0 rgba(139,63,251,.6); animation:pulse 2.2s infinite; }
+.map-point.current{ background:var(--gold); border-color:var(--gold); }
+.map-point.selected{ outline:2px solid var(--cyan); }
+@keyframes pulse{ 0%{box-shadow:0 0 0 0 rgba(139,63,251,.5);} 70%{box-shadow:0 0 0 14px rgba(139,63,251,0);} 100%{box-shadow:0 0 0 0 rgba(139,63,251,0);} }
+.map-label{ position:absolute; top:22px; left:50%; transform:translateX(-50%); font-size:10.5px; white-space:nowrap; background:rgba(10,10,18,.85);
+  padding:2px 7px; border-radius:6px; pointer-events:none; opacity:0; transition:opacity .2s ease; }
+.map-point:hover .map-label{ opacity:1; }
+.map-info{ background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:22px; display:flex; flex-direction:column; justify-content:center; }
+.map-info-title{ font-family:var(--font-display); font-size:20px; color:var(--cyan); margin-bottom:8px; }
+.map-info-tag{ font-size:11.5px; color:var(--magenta); letter-spacing:1px; text-transform:uppercase; margin-bottom:10px; }
+.map-hint{ color:var(--muted); font-size:13.5px; }
+
+/* actions / dice */
+.roll-card{ background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:20px; margin-bottom:14px; }
+.roll-result{ display:inline-block; font-family:var(--font-display); font-weight:900; font-size:22px; padding:4px 14px; border-radius:8px; margin-top:8px; }
+.roll-success{ background:rgba(41,224,255,.15); color:var(--cyan); }
+.roll-fail{ background:rgba(255,61,154,.15); color:var(--magenta); }
+.dice-face{ display:inline-flex; align-items:center; justify-content:center; width:46px; height:46px; border:2px solid var(--purple);
+  border-radius:10px; font-family:var(--font-display); font-size:20px; font-weight:900; color:var(--purple); margin-right:10px; }
+
+.toast{ position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(20px); background:var(--panel-raised);
+  border:1px solid var(--purple); padding:12px 20px; border-radius:10px; font-size:14px; font-weight:600; opacity:0; pointer-events:none;
+  transition:all .3s ease; z-index:200; }
+.toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+.empty-state{ color:var(--muted); font-size:14px; text-align:center; padding:40px 20px; border:1px dashed var(--border); border-radius:14px; }
+.loading{ color:var(--muted); font-size:14px; padding:30px; text-align:center; }
+</style>
+</head>
+<body>
+<div class="bg-fx"><div class="glow glow-purple"></div><div class="glow glow-blue"></div></div>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef, useMemo } = React;
+const supabase = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+
+/* ============================================================
+   UTIL
+   ============================================================ */
+function useToast(){
+  const [msg, setMsg] = useState(null);
+  function show(text){
+    setMsg(text);
+    clearTimeout(show._t);
+    show._t = setTimeout(() => setMsg(null), 2600);
+  }
+  return [msg, show];
+}
+function rankClass(r){ return 'rank-' + (r || 'A'); }
+function attrModifier(v){ return Math.floor((v - 50) / 10); }
+function initialsOf(name){ return (name || '?').slice(0,2).toUpperCase(); }
+
+/* ============================================================
+   AUTENTICAÇÃO / TELA DE ABERTURA
+   ============================================================ */
+function AuthScreen(){
+  const [mode, setMode] = useState('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+  const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e){
+    e.preventDefault();
+    setError(''); setInfo(''); setBusy(true);
+    try{
+      if(mode === 'login'){
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if(error) throw error;
+      } else {
+        const { data, error } = await supabase.auth.signUp({ email, password });
+        if(error) throw error;
+        if(name && data.user){
+          await supabase.from('profiles').update({ display_name: name }).eq('id', data.user.id);
+        }
+        setInfo('Conta criada! Verifique seu e-mail se a confirmação estiver ativa, ou já pode entrar.');
+      }
+    }catch(err){
+      setError(err.message || 'Algo deu errado.');
+    }
+    setBusy(false);
+  }
+
+  return (
+    <div className="splash">
+      <div className="splash-title">OS ESCOLHIDOS</div>
+      <div className="splash-sub">— crônicas do véu primordial —</div>
+      <div className="auth-card">
+        <div className="auth-tabs">
+          <button type="button" className={"auth-tab " + (mode==='login'?'active':'')} onClick={() => setMode('login')}>Entrar</button>
+          <button type="button" className={"auth-tab " + (mode==='signup'?'active':'')} onClick={() => setMode('signup')}>Criar conta</button>
+        </div>
+        {error && <div className="auth-error">{error}</div>}
+        {info && <div className="auth-msg">{info}</div>}
+        <form onSubmit={submit}>
+          {mode === 'signup' && (
+            <div className="field">
+              <label>Nome de exibição</label>
+              <input type="text" value={name} onChange={e=>setName(e.target.value)} placeholder="Como quer ser chamado" />
+            </div>
+          )}
+          <div className="field">
+            <label>E-mail</label>
+            <input type="email" required value={email} onChange={e=>setEmail(e.target.value)} placeholder="voce@email.com" />
+          </div>
+          <div className="field">
+            <label>Senha</label>
+            <input type="password" required minLength={6} value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••" />
+          </div>
+          <button className="btn-primary" style={{width:'100%'}} disabled={busy}>
+            {busy ? 'Aguarde...' : (mode === 'login' ? 'Entrar' : 'Criar conta')}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   NAV
+   ============================================================ */
+function Nav({ view, setView, profile, onLogout }){
+  const items = [
+    ['home','Home'], ['characters','Personagens'], ['map','Mundo'], ['actions','Ações & Dados'],
+  ];
+  if(profile && profile.role === 'admin') items.push(['system','Sistema']);
+  return (
+    <header className="topbar">
+      <div className="brand"><span className="brand-mark">卍</span><span className="brand-text">OS ESCOLHIDOS</span></div>
+      <nav className="main-nav">
+        {items.map(([id,label]) => (
+          <button key={id} className={"nav-btn " + (view===id?'active':'')} onClick={() => setView(id)}>{label}</button>
+        ))}
+      </nav>
+      <div className="who">
+        <span className={"role-pill " + (profile && profile.role==='admin' ? 'role-admin':'role-player')}>
+          {profile && profile.role === 'admin' ? 'Mestre' : 'Jogador'}
+        </span>
+        <span>{profile ? profile.display_name : ''}</span>
+        <button className="btn-ghost btn-sm" onClick={onLogout}>Sair</button>
+      </div>
+    </header>
+  );
+}
+
+/* ============================================================
+   HOME — feed da história
+   ============================================================ */
+function HomeView({ profile, toast }){
+  const [posts, setPosts] = useState(null);
+  const [content, setContent] = useState('');
+  const [locations, setLocations] = useState([]);
+  const [locationId, setLocationId] = useState('');
+  const [posting, setPosting] = useState(false);
+
+  async function load(){
+    const { data } = await supabase.from('story_posts').select('*, location:map_locations(name)').order('created_at', { ascending: false });
+    setPosts(data || []);
+  }
+  useEffect(() => {
+    load();
+    supabase.from('map_locations').select('id,name').then(({data}) => setLocations(data || []));
+    const channel = supabase.channel('story_live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'story_posts' }, load)
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, []);
+
+  async function publish(){
+    if(!content.trim()) return;
+    setPosting(true);
+    const { error } = await supabase.from('story_posts').insert({
+      author_id: profile.id, content: content.trim(), location_id: locationId || null,
+    });
+    setPosting(false);
+    if(error){ toast('Erro ao publicar: ' + error.message); return; }
+    setContent(''); setLocationId('');
+    toast('Capítulo publicado!');
+  }
+
+  return (
+    <section>
+      <h2 className="section-title"><span className="tag">01</span> A História Até Agora</h2>
+
+      {profile.role === 'admin' && (
+        <div className="composer">
+          <div className="field">
+            <label>Novo capítulo</label>
+            <textarea rows="4" value={content} onChange={e=>setContent(e.target.value)} placeholder="Escreva a continuação da história..."></textarea>
+          </div>
+          <div className="grid2" style={{alignItems:'end'}}>
+            <div className="field" style={{marginBottom:0}}>
+              <label>Local (opcional)</label>
+              <select value={locationId} onChange={e=>setLocationId(e.target.value)}>
+                <option value="">— nenhum —</option>
+                {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+              </select>
+            </div>
+            <button className="btn-primary" onClick={publish} disabled={posting}>{posting ? 'Publicando...' : 'Publicar capítulo'}</button>
+          </div>
+        </div>
+      )}
+
+      {posts === null && <p className="loading">Carregando história...</p>}
+      {posts !== null && posts.length === 0 && <div className="empty-state">A história ainda não começou. Aguarde o mestre publicar o primeiro capítulo.</div>}
+      {posts && posts.map(p => (
+        <div className="story-post" key={p.id}>
+          <div className="story-meta">
+            <span>Mestre</span>
+            <span>{new Date(p.created_at).toLocaleString('pt-BR')}</span>
+          </div>
+          <div className="story-content">{p.content}</div>
+          {p.location && <span className="story-loc">📍 {p.location.name}</span>}
+        </div>
+      ))}
+    </section>
+  );
+}
+
+/* ============================================================
+   PERSONAGENS — grid + ficha (bio + stats + skills)
+   ============================================================ */
+function CharacterSheet({ char, profile, onClose, onChanged, toast }){
+  const [tab, setTab] = useState('sobre');
+  const isOwner = profile.id === char.owner_id;
+  const isAdmin = profile.role === 'admin';
+  const canEdit = isAdmin;
+  const [skills, setSkills] = useState([]);
+  const [edit, setEdit] = useState(false);
+  const [form, setForm] = useState({ ...char });
+  const [profiles, setProfiles] = useState([]);
+  const fileRef = useRef(null);
+
+  useEffect(() => {
+    supabase.from('skills').select('*').eq('character_id', char.id).order('depth').then(({data}) => setSkills(data || []));
+    if(isAdmin) supabase.from('profiles').select('id, display_name, email').then(({data}) => setProfiles(data || []));
+  }, [char.id]);
+
+  async function saveEdit(){
+    const { error } = await supabase.from('characters').update({
+      name: form.name, title: form.title, appearance: form.appearance, power: form.power,
+      affiliation: form.affiliation, status: form.status, rank: form.rank, bio_public: form.bio_public,
+      admin_notes: form.admin_notes, owner_id: form.owner_id || null,
+      forca: form.forca, agilidade: form.agilidade, inteligencia: form.inteligencia,
+      hp_max: form.hp_max, mp_max: form.mp_max,
+    }).eq('id', char.id);
+    if(error){ toast('Erro ao salvar: ' + error.message); return; }
+    toast('Personagem atualizado.');
+    setEdit(false);
+    onChanged();
+  }
+
+  async function uploadAvatar(e){
+    const file = e.target.files[0];
+    if(!file) return;
+    const path = char.id + '/' + Date.now() + '_' + file.name;
+    const { error: upErr } = await supabase.storage.from('avatars').upload(path, file, { upsert: true });
+    if(upErr){ toast('Erro no upload: ' + upErr.message); return; }
+    const { data } = supabase.storage.from('avatars').getPublicUrl(path);
+    await supabase.from('characters').update({ avatar_url: data.publicUrl }).eq('id', char.id);
+    toast('Imagem atualizada.');
+    onChanged();
+  }
+
+  async function gainExp(amount){
+    let exp = char.exp + amount;
+    let level = char.level;
+    let skillPoints = char.skill_points;
+    let leveled = false;
+    while(exp >= 100){ exp -= 100; level += 1; skillPoints += 1; leveled = true; }
+    const { error } = await supabase.from('characters').update({ exp, level, skill_points: skillPoints }).eq('id', char.id);
+    if(error){ toast('Erro: ' + error.message); return; }
+    toast(leveled ? char.name + ' subiu para o nível ' + level + '! (+1 ponto de habilidade)' : char.name + ' ganhou EXP.');
+    onChanged();
+  }
+
+  async function unlockSkill(skill){
+    if(char.skill_points <= 0){ toast('Sem pontos de habilidade disponíveis.'); return; }
+    if(char.level < skill.req_level){ toast('Nível insuficiente para essa habilidade.'); return; }
+    const { error: e1 } = await supabase.from('skills').update({ unlocked: true }).eq('id', skill.id);
+    const { error: e2 } = await supabase.from('characters').update({ skill_points: char.skill_points - 1 }).eq('id', char.id);
+    if(e1 || e2){ toast('Erro ao desbloquear habilidade.'); return; }
+    toast('Habilidade "' + skill.name + '" desbloqueada!');
+    setSkills(s => s.map(x => x.id === skill.id ? { ...x, unlocked: true } : x));
+    onChanged();
+  }
+
+  return (
+    <div className="overlay open" onClick={e => { if(e.target.classList.contains('overlay')) onClose(); }}>
+      <div className="sheet">
+        <button className="sheet-close" onClick={onClose}>✕</button>
+        <div className="sheet-header">
+          {char.avatar_url
+            ? <img className="sheet-avatar" src={char.avatar_url} alt={char.name} />
+            : <div className="sheet-avatar" style={{display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'var(--font-display)',color:'var(--purple)',fontSize:24}}>{initialsOf(char.name)}</div>}
+          <div style={{flex:1}}>
+            <div className="sheet-name">{char.name}</div>
+            <div className="sheet-power">{char.power}</div>
+          </div>
+          <div className={"rank-badge " + rankClass(char.rank)} style={{width:48,height:48}}><span>{char.rank}</span></div>
+        </div>
+
+        <div className="tabs">
+          {['sobre','ficha','habilidades'].map(t => (
+            <button key={t} className={"tab-btn " + (tab===t?'active':'')} onClick={() => setTab(t)}>
+              {t === 'sobre' ? 'Sobre' : t === 'ficha' ? 'Ficha & EXP' : 'Habilidades'}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'sobre' && (
+          <div className="tab-panel">
+            <p><b>Afiliação:</b> <span className="muted">{char.affiliation || '—'}</span></p>
+            <p style={{marginTop:8}}><b>Status:</b> <span className="muted">{char.status || '—'}</span></p>
+            <p style={{marginTop:8}}><b>Aparência:</b> <span className="muted">{char.appearance || '—'}</span></p>
+            <p style={{marginTop:14}}>{char.bio_public}</p>
+            {isAdmin && (
+              <div className="admin-box">
+                <div className="admin-box-title">Notas do mestre (só admin vê)</div>
+                <textarea rows="3" defaultValue={char.admin_notes || ''} onBlur={async e => {
+                  await supabase.from('characters').update({ admin_notes: e.target.value }).eq('id', char.id);
+                  toast('Notas salvas.');
+                }}></textarea>
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'ficha' && (
+          <div className="tab-panel">
+            <div className="stat-row"><span>Nível</span><b>{char.level}</b></div>
+            <div className="stat-row"><span>Experiência</span><b>{char.exp}%</b></div>
+            <div className="gauge"><div className="gauge-fill gauge-exp" style={{width:char.exp+'%'}}></div></div>
+
+            <div className="grid2">
+              <div>
+                <div className="stat-row"><span>HP</span><b>{char.hp_current}/{char.hp_max}</b></div>
+                <div className="gauge"><div className="gauge-fill gauge-hp" style={{width:(100*char.hp_current/char.hp_max)+'%'}}></div></div>
+              </div>
+              <div>
+                <div className="stat-row"><span>MP</span><b>{char.mp_current}/{char.mp_max}</b></div>
+                <div className="gauge"><div className="gauge-fill gauge-mp" style={{width:(100*char.mp_current/char.mp_max)+'%'}}></div></div>
+              </div>
+            </div>
+
+            <div className="attr-grid">
+              <div className="attr-box"><div className="attr-label">Força</div><div className="attr-value">{char.forca}</div></div>
+              <div className="attr-box"><div className="attr-label">Agilidade</div><div className="attr-value">{char.agilidade}</div></div>
+              <div className="attr-box"><div className="attr-label">Inteligência</div><div className="attr-value">{char.inteligencia}</div></div>
+            </div>
+
+            <p className="muted" style={{fontSize:13,marginBottom:10}}>Pontos de habilidade disponíveis: <b style={{color:'var(--gold)'}}>{char.skill_points}</b></p>
+
+            {isAdmin && (
+              <div className="admin-box">
+                <div className="admin-box-title">Progressão (mestre)</div>
+                <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+                  <button className="btn-primary btn-sm" onClick={() => gainExp(10)}>+10% EXP</button>
+                  <button className="btn-primary btn-sm" onClick={() => gainExp(25)}>+25% EXP</button>
+                  <button className="btn-ghost btn-sm" onClick={() => fileRef.current.click()}>Trocar imagem</button>
+                  <input type="file" accept="image/*" ref={fileRef} style={{display:'none'}} onChange={uploadAvatar} />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'habilidades' && (
+          <div className="tab-panel">
+            {skills.length === 0 && <p className="muted">Nenhuma habilidade cadastrada para este personagem ainda.</p>}
+            {skills.map(s => (
+              <div key={s.id} className={"skill-node " + (s.unlocked ? 'unlocked' : 'locked')} style={{'--depth': s.depth}}>
+                <div className="skill-icon">{s.unlocked ? '★' : '☆'}</div>
+                <div className="skill-body">
+                  <div className="skill-name">{s.name}</div>
+                  <div className="skill-req">Requer nível {s.req_level}</div>
+                  <div className="skill-desc">{s.desc || s.description}</div>
+                </div>
+                {!s.unlocked && (isOwner || isAdmin) && char.level >= s.req_level && char.skill_points > 0 && (
+                  <button className="btn-primary btn-sm" onClick={() => unlockSkill(s)}>Desbloquear</button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {canEdit && (
+          <div className="admin-box" style={{marginTop:20}}>
+            <div className="admin-box-title">Editar personagem (mestre)</div>
+            {!edit && <button className="btn-ghost btn-sm" onClick={() => { setForm({...char}); setEdit(true); }}>Editar dados</button>}
+            {edit && (
+              <div>
+                <div className="grid2">
+                  <div className="field"><label>Nome</label><input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} /></div>
+                  <div className="field"><label>Poder</label><input value={form.power||''} onChange={e=>setForm({...form,power:e.target.value})} /></div>
+                  <div className="field"><label>Afiliação</label><input value={form.affiliation||''} onChange={e=>setForm({...form,affiliation:e.target.value})} /></div>
+                  <div className="field"><label>Status</label><input value={form.status||''} onChange={e=>setForm({...form,status:e.target.value})} /></div>
+                  <div className="field"><label>Rank</label>
+                    <select value={form.rank} onChange={e=>setForm({...form,rank:e.target.value})}>
+                      <option value="S">S</option><option value="A">A</option><option value="B">B</option><option value="C">C</option>
+                    </select>
+                  </div>
+                  <div className="field"><label>Jogador dono</label>
+                    <select value={form.owner_id || ''} onChange={e=>setForm({...form,owner_id:e.target.value})}>
+                      <option value="">— sem dono —</option>
+                      {profiles.map(p => <option key={p.id} value={p.id}>{p.display_name || p.email}</option>)}
+                    </select>
+                  </div>
+                  <div className="field"><label>Força</label><input type="number" value={form.forca} onChange={e=>setForm({...form,forca:+e.target.value})} /></div>
+                  <div className="field"><label>Agilidade</label><input type="number" value={form.agilidade} onChange={e=>setForm({...form,agilidade:+e.target.value})} /></div>
+                  <div className="field"><label>Inteligência</label><input type="number" value={form.inteligencia} onChange={e=>setForm({...form,inteligencia:+e.target.value})} /></div>
+                  <div className="field"><label>HP máximo</label><input type="number" value={form.hp_max} onChange={e=>setForm({...form,hp_max:+e.target.value})} /></div>
+                  <div className="field"><label>MP máximo</label><input type="number" value={form.mp_max} onChange={e=>setForm({...form,mp_max:+e.target.value})} /></div>
+                </div>
+                <div className="field"><label>Aparência</label><textarea rows="2" value={form.appearance||''} onChange={e=>setForm({...form,appearance:e.target.value})}></textarea></div>
+                <div className="field"><label>Biografia pública</label><textarea rows="3" value={form.bio_public||''} onChange={e=>setForm({...form,bio_public:e.target.value})}></textarea></div>
+                <div style={{display:'flex',gap:10}}>
+                  <button className="btn-primary btn-sm" onClick={saveEdit}>Salvar</button>
+                  <button className="btn-ghost btn-sm" onClick={() => setEdit(false)}>Cancelar</button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CharactersView({ profile, toast }){
+  const [chars, setChars] = useState(null);
+  const [openId, setOpenId] = useState(null);
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState('');
+
+  async function load(){
+    const { data } = await supabase.from('characters').select('*').order('created_at');
+    setChars(data || []);
+  }
+  useEffect(() => { load(); }, []);
+
+  async function createChar(){
+    if(!newName.trim()) return;
+    const { error } = await supabase.from('characters').insert({ name: newName.trim() });
+    if(error){ toast('Erro: ' + error.message); return; }
+    setNewName(''); setCreating(false);
+    toast('Personagem criado.');
+    load();
+  }
+
+  return (
+    <section>
+      <h2 className="section-title"><span className="tag">02</span> Personagens</h2>
+
+      {profile.role === 'admin' && (
+        <div style={{marginBottom:20}}>
+          {!creating && <button className="btn-primary btn-sm" onClick={() => setCreating(true)}>+ Novo personagem</button>}
+          {creating && (
+            <div className="composer" style={{marginBottom:0}}>
+              <div className="grid2" style={{alignItems:'end'}}>
+                <div className="field" style={{marginBottom:0}}><label>Nome do personagem</label>
+                  <input value={newName} onChange={e=>setNewName(e.target.value)} placeholder="Nome" /></div>
+                <div style={{display:'flex',gap:10}}>
+                  <button className="btn-primary" onClick={createChar}>Criar</button>
+                  <button className="btn-ghost" onClick={() => setCreating(false)}>Cancelar</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {chars === null && <p className="loading">Carregando personagens...</p>}
+      {chars && chars.length === 0 && <div className="empty-state">Nenhum personagem cadastrado ainda.</div>}
+      <div className="char-grid">
+        {chars && chars.map(c => (
+          <div className="char-card" key={c.id} onClick={() => setOpenId(c.id)}>
+            {c.avatar_url ? <img className="char-avatar" src={c.avatar_url} alt={c.name} /> : <div className="char-avatar-placeholder">{initialsOf(c.name)}</div>}
+            <div className="char-card-body">
+              <div className="card-top">
+                <div><div className="card-name">{c.name}</div><div className="card-power">{c.power}</div></div>
+                <div className={"rank-badge " + rankClass(c.rank)}><span>{c.rank}</span></div>
+              </div>
+              <p className="card-desc">{c.bio_public ? c.bio_public.slice(0,90) : 'Sem biografia ainda.'}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {openId && chars && (
+        <CharacterSheet
+          char={chars.find(c => c.id === openId)}
+          profile={profile}
+          onClose={() => setOpenId(null)}
+          onChanged={load}
+          toast={toast}
+        />
+      )}
+    </section>
+  );
+}
+
+/* ============================================================
+   MAPA
+   ============================================================ */
+function MapView({ profile, toast }){
+  const isAdmin = profile.role === 'admin';
+  const [locations, setLocations] = useState([]);
+  const [settings, setSettings] = useState(null);
+  const [selected, setSelected] = useState(null);
+  const [editMode, setEditMode] = useState(false);
+  const [editingLoc, setEditingLoc] = useState(null);
+  const fileRef = useRef(null);
+
+  async function load(){
+    const { data: locs } = await supabase.from('map_locations').select('*').order('created_at');
+    setLocations(locs || []);
+    const { data: s } = await supabase.from('settings').select('*').eq('id', 1).single();
+    setSettings(s);
+  }
+  useEffect(() => { load(); }, []);
+
+  async function handleMapClick(e){
+    if(!editMode || !isAdmin) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width * 100).toFixed(1);
+    const y = ((e.clientY - rect.top) / rect.height * 100).toFixed(1);
+    const name = prompt('Nome do novo local:');
+    if(!name) return;
+    const { error } = await supabase.from('map_locations').insert({ name, x, y, description: '' });
+    if(error){ toast('Erro: ' + error.message); return; }
+    toast('Local adicionado.');
+    load();
+  }
+
+  async function uploadMapImage(e){
+    const file = e.target.files[0];
+    if(!file) return;
+    const path = Date.now() + '_' + file.name;
+    const { error: upErr } = await supabase.storage.from('maps').upload(path, file, { upsert: true });
+    if(upErr){ toast('Erro no upload: ' + upErr.message); return; }
+    const { data } = supabase.storage.from('maps').getPublicUrl(path);
+    await supabase.from('settings').update({ map_image_url: data.publicUrl }).eq('id', 1);
+    toast('Mapa atualizado.');
+    load();
+  }
+
+  async function saveLocation(){
+    const { error } = await supabase.from('map_locations').update({
+      name: editingLoc.name, description: editingLoc.description, current_story: editingLoc.current_story,
+    }).eq('id', editingLoc.id);
+    if(error){ toast('Erro: ' + error.message); return; }
+    toast('Local atualizado.');
+    setEditingLoc(null);
+    load();
+    setSelected(editingLoc);
+  }
+
+  async function setCurrent(loc){
+    await supabase.from('settings').update({ current_location_id: loc.id }).eq('id', 1);
+    toast('Local atual definido: ' + loc.name);
+    load();
+  }
+
+  const mapStyle = settings && settings.map_image_url
+    ? { backgroundImage: 'url(' + settings.map_image_url + ')' }
+    : {};
+
+  return (
+    <section>
+      <h2 className="section-title"><span className="tag">03</span> O Mundo</h2>
+
+      {isAdmin && (
+        <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap'}}>
+          <button className="btn-ghost btn-sm" onClick={() => fileRef.current.click()}>Enviar imagem do mapa</button>
+          <input type="file" accept="image/*" ref={fileRef} style={{display:'none'}} onChange={uploadMapImage} />
+          <button className={"btn-sm " + (editMode ? 'btn-primary' : 'btn-ghost')} onClick={() => setEditMode(!editMode)}>
+            {editMode ? 'Sair do modo edição' : 'Modo edição (clique no mapa para adicionar local)'}
+          </button>
+        </div>
+      )}
+
+      <div className="map-wrap">
+        <div className={"map-surface " + (settings && settings.map_image_url ? '' : 'no-image')} style={mapStyle} onClick={handleMapClick}>
+          {locations.map(loc => (
+            <div key={loc.id}
+              className={"map-point " + (settings && settings.current_location_id === loc.id ? 'current ' : '') + (selected && selected.id===loc.id ? 'selected' : '')}
+              style={{ left: loc.x + '%', top: loc.y + '%' }}
+              onClick={(e) => { e.stopPropagation(); setSelected(loc); }}>
+              <span className="map-label">{loc.name}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="map-info">
+          {!selected && <p className="map-hint">Toque em um ponto do mapa para revelar sua história.{isAdmin ? ' (Ative o modo edição para adicionar novos locais.)' : ''}</p>}
+          {selected && editingLoc && editingLoc.id === selected.id && (
+            <div>
+              <div className="field"><label>Nome</label><input value={editingLoc.name} onChange={e=>setEditingLoc({...editingLoc,name:e.target.value})} /></div>
+              <div className="field"><label>Descrição do local</label><textarea rows="3" value={editingLoc.description||''} onChange={e=>setEditingLoc({...editingLoc,description:e.target.value})}></textarea></div>
+              <div className="field"><label>O que está acontecendo aqui agora</label><textarea rows="3" value={editingLoc.current_story||''} onChange={e=>setEditingLoc({...editingLoc,current_story:e.target.value})}></textarea></div>
+              <div style={{display:'flex',gap:10}}>
+                <button className="btn-primary btn-sm" onClick={saveLocation}>Salvar</button>
+                <button className="btn-ghost btn-sm" onClick={() => setEditingLoc(null)}>Cancelar</button>
+              </div>
+            </div>
+          )}
+          {selected && (!editingLoc || editingLoc.id !== selected.id) && (
+            <div>
+              <p className="map-info-tag">{settings && settings.current_location_id === selected.id ? 'Local atual da história' : 'Local do mapa'}</p>
+              <h3 className="map-info-title">{selected.name}</h3>
+              <p style={{color:'var(--muted)',fontSize:14,marginBottom:10}}>{selected.description}</p>
+              {selected.current_story && <p style={{fontSize:14,lineHeight:1.6}}>{selected.current_story}</p>}
+              {isAdmin && (
+                <div style={{display:'flex',gap:10,marginTop:14,flexWrap:'wrap'}}>
+                  <button className="btn-ghost btn-sm" onClick={() => setEditingLoc({...selected})}>Editar local</button>
+                  <button className="btn-primary btn-sm" onClick={() => setCurrent(selected)}>Marcar como local atual</button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ============================================================
+   AÇÕES & DADOS (d20)
+   ============================================================ */
+function ActionsView({ profile, toast }){
+  const [myChars, setMyChars] = useState([]);
+  const [charId, setCharId] = useState('');
+  const [actionText, setActionText] = useState('');
+  const [attribute, setAttribute] = useState('forca');
+  const [rolling, setRolling] = useState(false);
+  const [lastRoll, setLastRoll] = useState(null);
+  const [feed, setFeed] = useState(null);
+  const [settings, setSettings] = useState(null);
+
+  async function loadFeed(){
+    const { data } = await supabase.from('actions').select('*, character:characters(name), player:profiles(display_name)').order('created_at', { ascending: false }).limit(30);
+    setFeed(data || []);
+  }
+  useEffect(() => {
+    supabase.from('characters').select('*').eq('owner_id', profile.id).then(({data}) => {
+      setMyChars(data || []);
+      if(data && data.length) setCharId(data[0].id);
+    });
+    supabase.from('settings').select('*').eq('id',1).single().then(({data}) => setSettings(data));
+    loadFeed();
+    const channel = supabase.channel('actions_live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'actions' }, loadFeed)
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, []);
+
+  async function roll(){
+    if(!charId){ toast('Você precisa ter um personagem vinculado. Peça ao mestre.'); return; }
+    if(!actionText.trim()){ toast('Descreva a ação antes de rolar.'); return; }
+    const char = myChars.find(c => c.id === charId);
+    const dieRoll = Math.floor(Math.random()*20)+1;
+    const modifier = attrModifier(char[attribute]);
+    const total = dieRoll + modifier;
+    const dc = (settings && settings.default_dc) || 13;
+    const success = total >= dc;
+    setRolling(true);
+    const { error } = await supabase.from('actions').insert({
+      character_id: charId, player_id: profile.id, action_text: actionText.trim(),
+      attribute, roll: dieRoll, modifier, total, dc, success,
+    });
+    setRolling(false);
+    if(error){ toast('Erro: ' + error.message); return; }
+    setLastRoll({ dieRoll, modifier, total, dc, success });
+    setActionText('');
+    toast(success ? 'Sucesso!' : 'Fracasso...');
+  }
+
+  async function respond(actionId, text){
+    await supabase.from('actions').update({ admin_response: text }).eq('id', actionId);
+    toast('Resposta do mestre salva.');
+    loadFeed();
+  }
+
+  return (
+    <section>
+      <h2 className="section-title"><span className="tag">04</span> Ações &amp; Dados</h2>
+
+      {myChars.length > 0 && (
+        <div className="composer">
+          <div className="grid2">
+            <div className="field"><label>Seu personagem</label>
+              <select value={charId} onChange={e=>setCharId(e.target.value)}>
+                {myChars.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            <div className="field"><label>Atributo usado na ação</label>
+              <select value={attribute} onChange={e=>setAttribute(e.target.value)}>
+                <option value="forca">Força</option><option value="agilidade">Agilidade</option><option value="inteligencia">Inteligência</option>
+              </select>
+            </div>
+          </div>
+          <div className="field"><label>O que seu personagem tenta fazer?</label>
+            <textarea rows="2" value={actionText} onChange={e=>setActionText(e.target.value)} placeholder="Ex: tentar escalar a muralha gelada..."></textarea>
+          </div>
+          <button className="btn-primary" onClick={roll} disabled={rolling}>{rolling ? 'Rolando...' : 'Rolar d20'}</button>
+
+          {lastRoll && (
+            <div style={{marginTop:16}}>
+              <span className="dice-face">{lastRoll.dieRoll}</span>
+              <span style={{fontSize:13,color:'var(--muted)'}}>+ {lastRoll.modifier} (atributo) = {lastRoll.total} vs CD {lastRoll.dc}</span>
+              <div>
+                <span className={"roll-result " + (lastRoll.success ? 'roll-success' : 'roll-fail')}>
+                  {lastRoll.success ? 'SUCESSO' : 'FRACASSO'}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      {myChars.length === 0 && (
+        <div className="empty-state" style={{marginBottom:24}}>
+          Você ainda não tem um personagem vinculado à sua conta. Peça ao mestre para te atribuir um em Sistema → Personagens.
+        </div>
+      )}
+
+      <h3 style={{fontFamily:'var(--font-display)',fontSize:17,marginBottom:14,marginTop:26}}>Registro de ações</h3>
+      {feed === null && <p className="loading">Carregando...</p>}
+      {feed && feed.length === 0 && <div className="empty-state">Nenhuma ação registrada ainda.</div>}
+      {feed && feed.map(a => (
+        <div className="roll-card" key={a.id}>
+          <div className="story-meta">
+            <span>{a.character ? a.character.name : '—'} · {a.player ? a.player.display_name : ''}</span>
+            <span>{new Date(a.created_at).toLocaleString('pt-BR')}</span>
+          </div>
+          <p style={{fontSize:14,marginBottom:8}}>{a.action_text}</p>
+          <span className={"roll-result " + (a.success ? 'roll-success' : 'roll-fail')} style={{fontSize:15,padding:'3px 10px'}}>
+            {a.roll} + {a.modifier} = {a.total} vs CD {a.dc} — {a.success ? 'SUCESSO' : 'FRACASSO'}
+          </span>
+          {a.admin_response && <p style={{marginTop:10,fontSize:13.5,color:'var(--cyan)'}}>Mestre: {a.admin_response}</p>}
+          {profile.role === 'admin' && !a.admin_response && (
+            <AdminRespond onSave={(text) => respond(a.id, text)} />
+          )}
+        </div>
+      ))}
+    </section>
+  );
+}
+function AdminRespond({ onSave }){
+  const [text, setText] = useState('');
+  return (
+    <div style={{marginTop:10,display:'flex',gap:8}}>
+      <input placeholder="Consequência narrativa..." value={text} onChange={e=>setText(e.target.value)} />
+      <button className="btn-ghost btn-sm" onClick={() => { if(text.trim()){ onSave(text.trim()); setText(''); } }}>Responder</button>
+    </div>
+  );
+}
+
+/* ============================================================
+   SISTEMA (admin)
+   ============================================================ */
+function SystemView({ profile, toast }){
+  const [profiles, setProfiles] = useState([]);
+  const [chars, setChars] = useState([]);
+  const [settings, setSettings] = useState(null);
+
+  async function load(){
+    const { data: p } = await supabase.from('profiles').select('*').order('created_at');
+    setProfiles(p || []);
+    const { data: c } = await supabase.from('characters').select('*').order('name');
+    setChars(c || []);
+    const { data: s } = await supabase.from('settings').select('*').eq('id',1).single();
+    setSettings(s);
+  }
+  useEffect(() => { load(); }, []);
+
+  async function assignOwner(charId, ownerId){
+    await supabase.from('characters').update({ owner_id: ownerId || null }).eq('id', charId);
+    toast('Vínculo atualizado.');
+    load();
+  }
+  async function toggleRole(p){
+    const newRole = p.role === 'admin' ? 'player' : 'admin';
+    await supabase.from('profiles').update({ role: newRole }).eq('id', p.id);
+    toast(p.display_name + ' agora é ' + (newRole === 'admin' ? 'mestre' : 'jogador') + '.');
+    load();
+  }
+  async function saveDc(value){
+    await supabase.from('settings').update({ default_dc: value }).eq('id',1);
+    toast('CD padrão atualizada.');
+  }
+
+  return (
+    <section>
+      <h2 className="section-title"><span className="tag">05</span> Painel do Mestre</h2>
+
+      <h3 style={{fontFamily:'var(--font-display)',fontSize:16,marginBottom:12}}>Dificuldade padrão dos testes</h3>
+      <div style={{display:'flex',gap:10,alignItems:'center',marginBottom:28}}>
+        <input type="number" style={{width:90}} defaultValue={settings ? settings.default_dc : 13}
+          onBlur={e => saveDc(+e.target.value)} />
+        <span className="muted" style={{fontSize:13}}>CD que os jogadores precisam alcançar no d20 + atributo.</span>
+      </div>
+
+      <h3 style={{fontFamily:'var(--font-display)',fontSize:16,marginBottom:12}}>Jogadores</h3>
+      <div style={{marginBottom:28}}>
+        {profiles.map(p => (
+          <div key={p.id} className="roll-card" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <div>
+              <b>{p.display_name}</b> <span className="muted" style={{fontSize:12.5}}>({p.email})</span>
+            </div>
+            <div style={{display:'flex',gap:10,alignItems:'center'}}>
+              <span className={"role-pill " + (p.role==='admin'?'role-admin':'role-player')}>{p.role === 'admin' ? 'Mestre' : 'Jogador'}</span>
+              {p.id !== profile.id && <button className="btn-ghost btn-sm" onClick={() => toggleRole(p)}>Alternar</button>}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <h3 style={{fontFamily:'var(--font-display)',fontSize:16,marginBottom:12}}>Vincular personagens aos jogadores</h3>
+      <div>
+        {chars.map(c => (
+          <div key={c.id} className="roll-card" style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10}}>
+            <b>{c.name}</b>
+            <select style={{width:220}} value={c.owner_id || ''} onChange={e => assignOwner(c.id, e.target.value)}>
+              <option value="">— sem dono —</option>
+              {profiles.map(p => <option key={p.id} value={p.id}>{p.display_name}</option>)}
+            </select>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/* ============================================================
+   APP RAIZ
+   ============================================================ */
+function App(){
+  const [session, setSession] = useState(undefined);
+  const [profile, setProfile] = useState(null);
+  const [view, setView] = useState('home');
+  const [toastMsg, showToast] = useToast();
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, sess) => setSession(sess));
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if(session === undefined) return;
+    if(!session){ setProfile(null); return; }
+    let cancelled = false;
+    async function loadProfile(){
+      let { data } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
+      if(!data){
+        await supabase.from('profiles').insert({ id: session.user.id, email: session.user.email, display_name: session.user.email.split('@')[0] });
+        const r = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
+        data = r.data;
+      }
+      if(!cancelled) setProfile(data);
+    }
+    loadProfile();
+    return () => { cancelled = true; };
+  }, [session]);
+
+  if(session === undefined) return <div className="loading">Carregando...</div>;
+  if(!session) return <AuthScreen />;
+  if(!profile) return <div className="loading">Preparando sua ficha...</div>;
+
+  return (
+    <React.Fragment>
+      <Nav view={view} setView={setView} profile={profile} onLogout={() => supabase.auth.signOut()} />
+      <main>
+        {view === 'home' && <HomeView profile={profile} toast={showToast} />}
+        {view === 'characters' && <CharactersView profile={profile} toast={showToast} />}
+        {view === 'map' && <MapView profile={profile} toast={showToast} />}
+        {view === 'actions' && <ActionsView profile={profile} toast={showToast} />}
+        {view === 'system' && profile.role === 'admin' && <SystemView profile={profile} toast={showToast} />}
+      </main>
+      <div className={"toast " + (toastMsg ? 'show' : '')}>{toastMsg}</div>
+    </React.Fragment>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
