@@ -11,14 +11,28 @@
 <!-- Troque as duas linhas abaixo pelos dados do SEU projeto Supabase   -->
 <!-- (Project Settings → API → Project URL / anon public key)          -->
 <script>
-  window.SUPABASE_URL = 'https://SEU-PROJETO.supabase.co';
-  window.SUPABASE_ANON_KEY = 'SUA-CHAVE-ANON-PUBLICA';
+  window.SUPABASE_URL = 'https://razuyifigjszdnbyvqce.supabase.co/rest/v1/';
+  window.SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJhenV5aWZpZ2pzemRuYnl2cWNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4MTkxMzksImV4cCI6MjA5ODM5NTEzOX0.l5-TZiZ8TvvAyu5diaI3XWWo6pvi5rUf4Vg4kR6E7YU';
 </script>
 
-<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script>
+  // Rede de segurança: se algo falhar ao carregar antes do React desenhar a tela,
+  // mostra uma mensagem de erro visível em vez de deixar a página em branco/preta.
+  window.addEventListener('error', function(e){
+    var root = document.getElementById('root');
+    if(root && !root.hasChildNodes()){
+      root.innerHTML = '<div style="max-width:640px;margin:80px auto;padding:28px;background:#191927;border:1px solid #ff3d9a;border-radius:14px;color:#e9e7f7;font-family:sans-serif;line-height:1.6;">' +
+        '<h2 style="color:#ff3d9a;margin-bottom:12px;">Erro ao carregar o sistema</h2>' +
+        '<p>' + (e.message || 'Erro desconhecido') + '</p>' +
+        '<p style="color:#8d8ba8;font-size:13px;margin-top:14px;">Abra o console do navegador (F12 → Console) e me mande um print da mensagem em vermelho.</p>' +
+        '</div>';
+    }
+  });
+</script>
 
 <style>
 /* ============================================================
@@ -211,6 +225,12 @@ label{ font-size:12px; color:var(--muted); text-transform:uppercase; letter-spac
 
 <script type="text/babel" data-presets="react">
 const { useState, useEffect, useRef, useMemo } = React;
+if(!window.supabase || !window.supabase.createClient){
+  throw new Error('Biblioteca do Supabase não carregou. Verifique sua conexão ou o link do script no <head>.');
+}
+if(window.SUPABASE_URL.indexOf('SEU-PROJETO') !== -1){
+  throw new Error('Configure o SUPABASE_URL e SUPABASE_ANON_KEY no topo do arquivo index.html antes de usar o sistema.');
+}
 const supabase = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
 
 /* ============================================================
