@@ -426,7 +426,7 @@ function ClassesView({ profile, toast }) {
     const [classes, setClasses] = useState(null);
     const [myClassId, setMyClassId] = useState(null);
     const [creating, setCreating] = useState(false);
-    const [form, setForm] = useState({ name: '', description: '', icon: '⚔️', tier: 1, req_level: 1, evolves_to_id: '', base_forca: 50, base_agilidade: 50, base_inteligencia: 50 });
+    const [form, setForm] = useState({ name: '', description: '', icon: '⚔️', tier: 1, req_level: 1, evolves_from_id: '', base_forca: 50, base_agilidade: 50, base_inteligencia: 50 });
     const [editingId, setEditingId] = useState(null);
     async function load() {
         const { data } = await supabase.from('classes').select('*').order('tier').order('req_level');
@@ -438,12 +438,12 @@ function ClassesView({ profile, toast }) {
     }
     useEffect(() => { load(); }, []);
     function startCreate() {
-        setForm({ name: '', description: '', icon: '⚔️', tier: 1, req_level: 1, evolves_to_id: '', base_forca: 50, base_agilidade: 50, base_inteligencia: 50 });
+        setForm({ name: '', description: '', icon: '⚔️', tier: 1, req_level: 1, evolves_from_id: '', base_forca: 50, base_agilidade: 50, base_inteligencia: 50 });
         setEditingId(null);
         setCreating(true);
     }
     function startEdit(c) {
-        setForm(Object.assign(Object.assign({}, c), { evolves_to_id: c.evolves_to_id || '' }));
+        setForm(Object.assign(Object.assign({}, c), { evolves_from_id: c.evolves_from_id || '' }));
         setEditingId(c.id);
         setCreating(true);
     }
@@ -454,7 +454,7 @@ function ClassesView({ profile, toast }) {
         }
         const payload = {
             name: form.name.trim(), description: form.description, icon: form.icon || '⚔️',
-            tier: +form.tier, req_level: +form.req_level, evolves_to_id: form.evolves_to_id || null,
+            tier: +form.tier, req_level: +form.req_level, evolves_from_id: form.evolves_from_id || null,
             base_forca: +form.base_forca, base_agilidade: +form.base_agilidade, base_inteligencia: +form.base_inteligencia,
         };
         const { error } = editingId
@@ -471,7 +471,8 @@ function ClassesView({ profile, toast }) {
     async function remove(id) {
         if (!confirm('Apagar esta classe? Personagens que a usam ficarão sem classe.'))
             return;
-        await supabase.from('classes').update({ class_id: null }).eq('class_id', id);
+        await supabase.from('characters').update({ class_id: null }).eq('class_id', id);
+        await supabase.from('classes').update({ evolves_from_id: null }).eq('evolves_from_id', id);
         const { error } = await supabase.from('classes').delete().eq('id', id);
         if (error) {
             toast('Erro: ' + error.message);
@@ -495,22 +496,20 @@ function ClassesView({ profile, toast }) {
                         React.createElement("label", null, "\u00CDcone (emoji)"),
                         React.createElement("input", { value: form.icon, onChange: e => setForm(Object.assign(Object.assign({}, form), { icon: e.target.value })), placeholder: "\u2694\uFE0F" })),
                     React.createElement("div", { className: "field" },
-                        React.createElement("label", null, "Tier (camada de evolu\u00E7\u00E3o)"),
+                        React.createElement("label", null, "Tier (s\u00F3 organizativo, 1 = classe inicial)"),
                         React.createElement("input", { type: "number", min: "1", value: form.tier, onChange: e => setForm(Object.assign(Object.assign({}, form), { tier: e.target.value })) })),
                     React.createElement("div", { className: "field" },
-                        React.createElement("label", null, "N\u00EDvel m\u00EDnimo para esta classe"),
+                        React.createElement("label", null, "N\u00EDvel m\u00EDnimo para virar esta classe"),
                         React.createElement("input", { type: "number", min: "1", value: form.req_level, onChange: e => setForm(Object.assign(Object.assign({}, form), { req_level: e.target.value })) })),
                     React.createElement("div", { className: "field" },
-                        React.createElement("label", null, "Evolui para"),
-                        React.createElement("select", { value: form.evolves_to_id, onChange: e => setForm(Object.assign(Object.assign({}, form), { evolves_to_id: e.target.value })) },
-                            React.createElement("option", { value: "" }, "\u2014 nenhuma (classe final) \u2014"),
+                        React.createElement("label", null, "Evolui a partir de"),
+                        React.createElement("select", { value: form.evolves_from_id, onChange: e => setForm(Object.assign(Object.assign({}, form), { evolves_from_id: e.target.value })) },
+                            React.createElement("option", { value: "" }, "\u2014 nenhuma (\u00E9 uma classe inicial) \u2014"),
                             classes && classes.filter(c => c.id !== editingId).map(c => React.createElement("option", { key: c.id, value: c.id },
                                 c.icon,
                                 " ",
-                                c.name,
-                                " (n\u00EDvel ",
-                                c.req_level,
-                                ")")))),
+                                c.name))),
+                        React.createElement("p", { className: "muted", style: { fontSize: 12, marginTop: 6 } }, "Dica: crie v\u00E1rias classes evoluindo \"a partir de\" a mesma classe base (ex: Paladino, Mago e Ladino todos \"a partir de\" Humano) pra o jogador poder escolher qual seguir.")),
                     React.createElement("div", { className: "field" },
                         React.createElement("label", null, "For\u00E7a base"),
                         React.createElement("input", { type: "number", value: form.base_forca, onChange: e => setForm(Object.assign(Object.assign({}, form), { base_forca: e.target.value })) })),
@@ -528,28 +527,29 @@ function ClassesView({ profile, toast }) {
                     React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => setCreating(false) }, "Cancelar")))))),
         classes === null && React.createElement("p", { className: "loading" }, "Carregando classes..."),
         classes && classes.length === 0 && React.createElement("div", { className: "empty-state" }, "Nenhuma classe cadastrada ainda."),
-        React.createElement("div", { className: "char-grid" }, classes && classes.filter(c => isAdmin || c.tier === 1 || c.id === myClassId).map(c => (React.createElement("div", { className: "char-card", key: c.id, style: { cursor: 'default' } },
-            React.createElement("div", { className: "char-card-body" },
-                React.createElement("div", { className: "card-top" },
-                    React.createElement("div", null,
-                        React.createElement("div", { className: "card-name" },
-                            c.icon,
-                            " ",
-                            c.name),
-                        React.createElement("div", { className: "card-power" },
-                            "Tier ",
-                            c.tier,
-                            " \u00B7 a partir do n\u00EDvel ",
-                            c.req_level))),
-                React.createElement("p", { className: "card-desc" }, c.description || 'Sem descrição ainda.'),
-                isAdmin && c.evolves_to_id && classes.find(x => x.id === c.evolves_to_id) && (React.createElement("p", { style: { fontSize: 12, color: 'var(--gold)', marginTop: 8 } },
-                    "Evolui para: ",
-                    classes.find(x => x.id === c.evolves_to_id).icon,
-                    " ",
-                    classes.find(x => x.id === c.evolves_to_id).name)),
-                isAdmin && (React.createElement("div", { style: { display: 'flex', gap: 8, marginTop: 10 } },
-                    React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => startEdit(c) }, "Editar"),
-                    React.createElement("button", { className: "btn-danger", onClick: () => remove(c.id) }, "Apagar"))))))))));
+        React.createElement("div", { className: "char-grid" }, classes && classes.filter(c => isAdmin || !c.evolves_from_id || c.id === myClassId).map(c => {
+            const children = classes.filter(x => x.evolves_from_id === c.id);
+            return (React.createElement("div", { className: "char-card", key: c.id, style: { cursor: 'default' } },
+                React.createElement("div", { className: "char-card-body" },
+                    React.createElement("div", { className: "card-top" },
+                        React.createElement("div", null,
+                            React.createElement("div", { className: "card-name" },
+                                c.icon,
+                                " ",
+                                c.name),
+                            React.createElement("div", { className: "card-power" },
+                                "Tier ",
+                                c.tier,
+                                " \u00B7 a partir do n\u00EDvel ",
+                                c.req_level))),
+                    React.createElement("p", { className: "card-desc" }, c.description || 'Sem descrição ainda.'),
+                    isAdmin && children.length > 0 && (React.createElement("p", { style: { fontSize: 12, color: 'var(--gold)', marginTop: 8 } },
+                        "Evolui para: ",
+                        children.map(ch => ch.icon + ' ' + ch.name).join(' ou '))),
+                    isAdmin && (React.createElement("div", { style: { display: 'flex', gap: 8, marginTop: 10 } },
+                        React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => startEdit(c) }, "Editar"),
+                        React.createElement("button", { className: "btn-danger", onClick: () => remove(c.id) }, "Apagar"))))));
+        }))));
 }
 /* ============================================================
    NAV
@@ -714,6 +714,15 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
         toast('Local atual do personagem atualizado.');
         onChanged();
     }
+    async function chooseEvolution(newClassId) {
+        const { error } = await supabase.rpc('choose_evolution', { p_character_id: char.id, p_new_class_id: newClassId });
+        if (error) {
+            toast('Erro: ' + error.message);
+            return;
+        }
+        toast('Evolução escolhida!');
+        onChanged();
+    }
     async function approveCharacter() {
         const { error } = await supabase.from('characters').update({
             status: 'aprovado', origin_story: originStory, current_location_id: form.current_location_id || char.current_location_id,
@@ -844,6 +853,15 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
                     React.createElement("label", null, "Hist\u00F3ria de origem"),
                     React.createElement("textarea", { rows: "4", value: originStory, onChange: e => setOriginStory(e.target.value), placeholder: "Escreva de onde esse personagem vem, como surgiu..." })),
                 React.createElement("button", { className: "btn-primary btn-sm", onClick: approveCharacter }, "\u2713 Aprovar personagem"))),
+            char.status === 'aprovado' && (isOwner || isAdmin) && classes.filter(c => c.evolves_from_id === char.class_id && char.level >= c.req_level).length > 0 && (React.createElement("div", { className: "admin-box", style: { marginBottom: 16, borderColor: 'var(--gold)' } },
+                React.createElement("div", { className: "admin-box-title", style: { color: 'var(--gold)' } }, "\u2728 Evolu\u00E7\u00E3o dispon\u00EDvel!"),
+                React.createElement("p", { style: { fontSize: 13, marginBottom: 10 } },
+                    char.name,
+                    " pode evoluir. Escolha um caminho:"),
+                React.createElement("div", { style: { display: 'flex', gap: 10, flexWrap: 'wrap' } }, classes.filter(c => c.evolves_from_id === char.class_id && char.level >= c.req_level).map(c => (React.createElement("button", { key: c.id, className: "btn-primary btn-sm", onClick: () => chooseEvolution(c.id) },
+                    c.icon,
+                    " Virar ",
+                    c.name)))))),
             React.createElement("div", { className: "tabs" }, ['sobre', 'ficha', 'habilidades', 'inventario', 'historico'].map(t => (React.createElement("button", { key: t, className: "tab-btn " + (tab === t ? 'active' : ''), onClick: () => setTab(t) }, t === 'sobre' ? 'Sobre' : t === 'ficha' ? 'Ficha & EXP' : t === 'habilidades' ? 'Habilidades' : t === 'inventario' ? 'Inventário' : 'Histórico')))),
             tab === 'sobre' && (React.createElement("div", { className: "tab-panel" },
                 React.createElement("p", null,
@@ -1058,7 +1076,7 @@ function CharactersView({ profile, toast, initialOpenId, clearInitialOpenId }) {
     async function load() {
         const { data } = await supabase.from('characters').select('*').order('created_at');
         setChars(data || []);
-        const { data: cls } = await supabase.from('classes').select('*').eq('tier', 1).order('name');
+        const { data: cls } = await supabase.from('classes').select('*').is('evolves_from_id', null).order('name');
         setClasses(cls || []);
     }
     useEffect(() => { load(); }, []);
