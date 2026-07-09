@@ -140,12 +140,17 @@ label{ font-size:12px; color:var(--muted); text-transform:uppercase; letter-spac
 .overlay.open{ display:flex; }
 .sheet{ background:linear-gradient(165deg,var(--panel-raised),var(--panel)); border:1px solid var(--border); border-radius:20px;
   max-width:680px; width:100%; max-height:88vh; overflow-y:auto; padding:28px; position:relative; }
-.sheet-close{ position:absolute; top:16px; right:18px; background:transparent; border:none; color:var(--muted); font-size:20px; }
+.sheet-close{ position:absolute; top:16px; right:18px; background:rgba(5,5,10,0.6); width:32px; height:32px; border-radius:50%; border:none; color:var(--text); font-size:18px; z-index:10; display:flex; align-items:center; justify-content:center; }
 .sheet-close:hover{ color:var(--magenta); }
-.sheet-header{ display:flex; gap:16px; align-items:center; margin-bottom:18px; }
-.sheet-avatar{ width:74px; height:74px; border-radius:12px; object-fit:cover; background:#05050a; }
-.sheet-name{ font-family:var(--font-display); font-size:22px; font-weight:700; }
-.sheet-power{ color:var(--cyan); font-size:13px; margin-top:2px; }
+.sheet-hero{ position:relative; width:calc(100% + 56px); margin:-28px -28px 20px; border-radius:20px 20px 0 0; overflow:hidden; height:280px; background:#05050a; }
+.sheet-hero-img{ width:100%; height:100%; object-fit:cover; display:block; }
+.sheet-hero-placeholder{ display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-size:64px; color:var(--purple); background:linear-gradient(160deg,var(--panel-raised),#05050a); }
+.sheet-hero-overlay{ position:absolute; left:0; right:0; bottom:0; padding:20px 24px; display:flex; align-items:center; gap:14px;
+  background:linear-gradient(0deg, rgba(5,5,10,0.92) 10%, rgba(5,5,10,0.55) 55%, transparent 100%); }
+.sheet-hero-overlay .rank-badge{ width:48px; height:48px; flex-shrink:0; }
+.sheet-hero-upload{ position:absolute; top:14px; left:14px; }
+.sheet-name{ font-family:var(--font-display); font-size:24px; font-weight:700; text-shadow:0 2px 12px rgba(0,0,0,0.8); }
+.sheet-power{ color:var(--cyan); font-size:13.5px; margin-top:3px; text-shadow:0 2px 8px rgba(0,0,0,0.8); }
 .tabs{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:18px; border-bottom:1px solid var(--border); padding-bottom:10px; }
 .tab-btn{ background:transparent; border:none; color:var(--muted); font-weight:700; font-size:13px; padding:6px 10px; border-radius:6px; }
 .tab-btn.active{ color:var(--cyan); background:rgba(41,224,255,.1); }
@@ -573,15 +578,18 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
             onClose(); } },
         React.createElement("div", { className: "sheet" },
             React.createElement("button", { className: "sheet-close", onClick: onClose }, "\u2715"),
-            React.createElement("div", { className: "sheet-header" },
+            React.createElement("div", { className: "sheet-hero" },
                 char.avatar_url
-                    ? React.createElement("img", { className: "sheet-avatar", src: char.avatar_url, alt: char.name })
-                    : React.createElement("div", { className: "sheet-avatar", style: { display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-display)', color: 'var(--purple)', fontSize: 24 } }, initialsOf(char.name)),
-                React.createElement("div", { style: { flex: 1 } },
-                    React.createElement("div", { className: "sheet-name" }, char.name),
-                    React.createElement("div", { className: "sheet-power" }, char.power)),
-                React.createElement("div", { className: "rank-badge " + rankClass(char.rank), style: { width: 48, height: 48 } },
-                    React.createElement("span", null, char.rank))),
+                    ? React.createElement("img", { className: "sheet-hero-img", src: char.avatar_url, alt: char.name })
+                    : React.createElement("div", { className: "sheet-hero-img sheet-hero-placeholder" }, initialsOf(char.name)),
+                React.createElement("div", { className: "sheet-hero-overlay" },
+                    React.createElement("div", { className: "rank-badge " + rankClass(char.rank) },
+                        React.createElement("span", null, char.rank)),
+                    React.createElement("div", null,
+                        React.createElement("div", { className: "sheet-name" }, char.name),
+                        React.createElement("div", { className: "sheet-power" }, char.power))),
+                isAdmin && (React.createElement("button", { className: "btn-primary btn-sm sheet-hero-upload", onClick: () => fileRef.current.click() }, char.avatar_url ? '🖼️ Trocar foto' : '🖼️ Adicionar foto do personagem')),
+                React.createElement("input", { type: "file", accept: "image/*", ref: fileRef, style: { display: 'none' }, onChange: uploadAvatar })),
             React.createElement("div", { className: "tabs" }, ['sobre', 'ficha', 'habilidades'].map(t => (React.createElement("button", { key: t, className: "tab-btn " + (tab === t ? 'active' : ''), onClick: () => setTab(t) }, t === 'sobre' ? 'Sobre' : t === 'ficha' ? 'Ficha & EXP' : 'Habilidades')))),
             tab === 'sobre' && (React.createElement("div", { className: "tab-panel" },
                 React.createElement("p", null,
@@ -650,9 +658,7 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
                     React.createElement("div", { className: "admin-box-title" }, "Progress\u00E3o (mestre)"),
                     React.createElement("div", { style: { display: 'flex', gap: 10, flexWrap: 'wrap' } },
                         React.createElement("button", { className: "btn-primary btn-sm", onClick: () => gainExp(10) }, "+10% EXP"),
-                        React.createElement("button", { className: "btn-primary btn-sm", onClick: () => gainExp(25) }, "+25% EXP"),
-                        React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => fileRef.current.click() }, "Trocar imagem"),
-                        React.createElement("input", { type: "file", accept: "image/*", ref: fileRef, style: { display: 'none' }, onChange: uploadAvatar })))))),
+                        React.createElement("button", { className: "btn-primary btn-sm", onClick: () => gainExp(25) }, "+25% EXP")))))),
             tab === 'habilidades' && (React.createElement("div", { className: "tab-panel" },
                 skills.length === 0 && React.createElement("p", { className: "muted" }, "Nenhuma habilidade cadastrada para este personagem ainda."),
                 skills.map(s => (React.createElement("div", { key: s.id, className: "skill-node " + (s.unlocked ? 'unlocked' : 'locked'), style: { '--depth': s.depth } },
@@ -881,6 +887,7 @@ function MapView({ profile, toast }) {
    AÇÕES & DADOS (d20)
    ============================================================ */
 function ActionsView({ profile, toast }) {
+    const isAdmin = profile.role === 'admin';
     const [myChars, setMyChars] = useState([]);
     const [charId, setCharId] = useState('');
     const [actionText, setActionText] = useState('');
@@ -890,8 +897,12 @@ function ActionsView({ profile, toast }) {
     const [feed, setFeed] = useState(null);
     const [settings, setSettings] = useState(null);
     async function loadFeed() {
-        const { data } = await supabase.from('actions').select('*, character:characters(name), player:profiles(display_name)').order('created_at', { ascending: false }).limit(30);
+        const { data } = await supabase.from('actions').select('*, character:characters(name), player:profiles(display_name)').order('created_at', { ascending: false }).limit(50);
         setFeed(data || []);
+    }
+    async function loadSettings() {
+        const { data } = await supabase.from('settings').select('*').eq('id', 1).single();
+        setSettings(data);
     }
     useEffect(() => {
         supabase.from('characters').select('*').eq('owner_id', profile.id).then(({ data }) => {
@@ -899,13 +910,17 @@ function ActionsView({ profile, toast }) {
             if (data && data.length)
                 setCharId(data[0].id);
         });
-        supabase.from('settings').select('*').eq('id', 1).single().then(({ data }) => setSettings(data));
+        loadSettings();
         loadFeed();
         const channel = supabase.channel('actions_live')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'actions' }, loadFeed)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, loadSettings)
             .subscribe();
         return () => supabase.removeChannel(channel);
     }, []);
+    const currentTurn = settings ? settings.current_turn : 1;
+    const myTurnAction = (feed && charId) ? feed.find(a => a.character_id === charId && a.turn === currentTurn) : null;
+    const turnActions = feed ? feed.filter(a => a.turn === currentTurn) : [];
     async function roll() {
         if (!charId) {
             toast('Você precisa ter um personagem vinculado. Peça ao mestre.');
@@ -913,6 +928,10 @@ function ActionsView({ profile, toast }) {
         }
         if (!actionText.trim()) {
             toast('Descreva a ação antes de rolar.');
+            return;
+        }
+        if (myTurnAction) {
+            toast('Seu personagem já agiu neste turno. Aguarde o mestre avançar o turno.');
             return;
         }
         const char = myChars.find(c => c.id === charId);
@@ -924,7 +943,7 @@ function ActionsView({ profile, toast }) {
         setRolling(true);
         const { error } = await supabase.from('actions').insert({
             character_id: charId, player_id: profile.id, action_text: actionText.trim(),
-            attribute, roll: dieRoll, modifier, total, dc, success,
+            attribute, roll: dieRoll, modifier, total, dc, success, turn: currentTurn,
         });
         setRolling(false);
         if (error) {
@@ -940,10 +959,30 @@ function ActionsView({ profile, toast }) {
         toast('Resposta do mestre salva.');
         loadFeed();
     }
+    async function advanceTurn() {
+        const { error } = await supabase.from('settings').update({ current_turn: currentTurn + 1 }).eq('id', 1);
+        if (error) {
+            toast('Erro: ' + error.message);
+            return;
+        }
+        toast('Turno ' + (currentTurn + 1) + ' iniciado!');
+    }
     return (React.createElement("section", null,
         React.createElement("h2", { className: "section-title" },
             React.createElement("span", { className: "tag" }, "04"),
             " A\u00E7\u00F5es & Dados"),
+        React.createElement("div", { className: "roll-card", style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 20 } },
+            React.createElement("div", null,
+                React.createElement("span", { style: { fontFamily: 'var(--font-display)', fontSize: 19 } },
+                    "Turno ",
+                    currentTurn),
+                React.createElement("span", { className: "muted", style: { fontSize: 13, marginLeft: 10 } },
+                    turnActions.length,
+                    " a\u00E7\u00E3o(\u00F5es) registrada(s) neste turno")),
+            isAdmin && React.createElement("button", { className: "btn-primary btn-sm", onClick: advanceTurn },
+                "Avan\u00E7ar para o Turno ",
+                currentTurn + 1,
+                " \u2192")),
         myChars.length > 0 && (React.createElement("div", { className: "composer" },
             React.createElement("div", { className: "grid2" },
                 React.createElement("div", { className: "field" },
@@ -951,14 +990,29 @@ function ActionsView({ profile, toast }) {
                     React.createElement("select", { value: charId, onChange: e => setCharId(e.target.value) }, myChars.map(c => React.createElement("option", { key: c.id, value: c.id }, c.name)))),
                 React.createElement("div", { className: "field" },
                     React.createElement("label", null, "Atributo usado na a\u00E7\u00E3o"),
-                    React.createElement("select", { value: attribute, onChange: e => setAttribute(e.target.value) },
+                    React.createElement("select", { value: attribute, onChange: e => setAttribute(e.target.value), disabled: !!myTurnAction },
                         React.createElement("option", { value: "forca" }, "For\u00E7a"),
                         React.createElement("option", { value: "agilidade" }, "Agilidade"),
                         React.createElement("option", { value: "inteligencia" }, "Intelig\u00EAncia")))),
-            React.createElement("div", { className: "field" },
-                React.createElement("label", null, "O que seu personagem tenta fazer?"),
-                React.createElement("textarea", { rows: "2", value: actionText, onChange: e => setActionText(e.target.value), placeholder: "Ex: tentar escalar a muralha gelada..." })),
-            React.createElement("button", { className: "btn-primary", onClick: roll, disabled: rolling }, rolling ? 'Rolando...' : 'Rolar d20'),
+            myTurnAction ? (React.createElement("div", { className: "empty-state" },
+                "Seu personagem j\u00E1 agiu neste turno. Resultado:",
+                ' ',
+                React.createElement("span", { className: "roll-result " + (myTurnAction.success ? 'roll-success' : 'roll-fail'), style: { marginLeft: 8 } },
+                    myTurnAction.roll,
+                    " + ",
+                    myTurnAction.modifier,
+                    " = ",
+                    myTurnAction.total,
+                    " vs CD ",
+                    myTurnAction.dc,
+                    " \u2014 ",
+                    myTurnAction.success ? 'SUCESSO' : 'FRACASSO'),
+                React.createElement("br", null),
+                React.createElement("span", { className: "muted", style: { fontSize: 13 } }, "Aguarde o mestre avan\u00E7ar o turno para agir de novo."))) : (React.createElement(React.Fragment, null,
+                React.createElement("div", { className: "field" },
+                    React.createElement("label", null, "O que seu personagem tenta fazer?"),
+                    React.createElement("textarea", { rows: "2", value: actionText, onChange: e => setActionText(e.target.value), placeholder: "Ex: tentar escalar a muralha gelada..." })),
+                React.createElement("button", { className: "btn-primary", onClick: roll, disabled: rolling }, rolling ? 'Rolando...' : 'Rolar d20'))),
             lastRoll && (React.createElement("div", { style: { marginTop: 16 } },
                 React.createElement("span", { className: "dice-face" }, lastRoll.dieRoll),
                 React.createElement("span", { style: { fontSize: 13, color: 'var(--muted)' } },
@@ -971,12 +1025,40 @@ function ActionsView({ profile, toast }) {
                 React.createElement("div", null,
                     React.createElement("span", { className: "roll-result " + (lastRoll.success ? 'roll-success' : 'roll-fail') }, lastRoll.success ? 'SUCESSO' : 'FRACASSO')))))),
         myChars.length === 0 && (React.createElement("div", { className: "empty-state", style: { marginBottom: 24 } }, "Voc\u00EA ainda n\u00E3o tem um personagem vinculado \u00E0 sua conta. Pe\u00E7a ao mestre para te atribuir um em Sistema \u2192 Personagens.")),
-        React.createElement("h3", { style: { fontFamily: 'var(--font-display)', fontSize: 17, marginBottom: 14, marginTop: 26 } }, "Registro de a\u00E7\u00F5es"),
+        React.createElement("h3", { style: { fontFamily: 'var(--font-display)', fontSize: 17, marginBottom: 14, marginTop: 26 } },
+            "Resumo do Turno ",
+            currentTurn),
+        turnActions.length === 0 && React.createElement("div", { className: "empty-state" }, "Ningu\u00E9m agiu neste turno ainda."),
+        turnActions.map(a => (React.createElement("div", { className: "roll-card", key: a.id, style: { borderColor: 'var(--cyan)' } },
+            React.createElement("div", { className: "story-meta" },
+                React.createElement("span", null,
+                    a.character ? a.character.name : '—',
+                    " \u00B7 ",
+                    a.player ? a.player.display_name : '')),
+            React.createElement("p", { style: { fontSize: 14, marginBottom: 8 } }, a.action_text),
+            React.createElement("span", { className: "roll-result " + (a.success ? 'roll-success' : 'roll-fail'), style: { fontSize: 15, padding: '3px 10px' } },
+                a.roll,
+                " + ",
+                a.modifier,
+                " = ",
+                a.total,
+                " vs CD ",
+                a.dc,
+                " \u2014 ",
+                a.success ? 'SUCESSO' : 'FRACASSO'),
+            a.admin_response && React.createElement("p", { style: { marginTop: 10, fontSize: 13.5, color: 'var(--cyan)' } },
+                "Mestre: ",
+                a.admin_response),
+            isAdmin && !a.admin_response && (React.createElement(AdminRespond, { onSave: (text) => respond(a.id, text) }))))),
+        React.createElement("h3", { style: { fontFamily: 'var(--font-display)', fontSize: 17, marginBottom: 14, marginTop: 26 } }, "Hist\u00F3rico completo"),
         feed === null && React.createElement("p", { className: "loading" }, "Carregando..."),
         feed && feed.length === 0 && React.createElement("div", { className: "empty-state" }, "Nenhuma a\u00E7\u00E3o registrada ainda."),
         feed && feed.map(a => (React.createElement("div", { className: "roll-card", key: a.id },
             React.createElement("div", { className: "story-meta" },
                 React.createElement("span", null,
+                    "Turno ",
+                    a.turn,
+                    " \u00B7 ",
                     a.character ? a.character.name : '—',
                     " \u00B7 ",
                     a.player ? a.player.display_name : ''),
@@ -995,7 +1077,7 @@ function ActionsView({ profile, toast }) {
             a.admin_response && React.createElement("p", { style: { marginTop: 10, fontSize: 13.5, color: 'var(--cyan)' } },
                 "Mestre: ",
                 a.admin_response),
-            profile.role === 'admin' && !a.admin_response && (React.createElement(AdminRespond, { onSave: (text) => respond(a.id, text) })))))));
+            isAdmin && !a.admin_response && (React.createElement(AdminRespond, { onSave: (text) => respond(a.id, text) })))))));
 }
 function AdminRespond({ onSave }) {
     const [text, setText] = useState('');
