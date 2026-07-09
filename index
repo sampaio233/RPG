@@ -258,6 +258,11 @@ function useToast() {
 function rankClass(r) { return 'rank-' + (r || 'A'); }
 function attrModifier(v) { return Math.floor((v - 50) / 10); }
 function initialsOf(name) { return (name || '?').slice(0, 2).toUpperCase(); }
+// remove acentos, espaços e caracteres especiais do nome do arquivo antes de subir pro Storage
+function sanitizeFileName(name) {
+    const noAccents = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    return noAccents.replace(/[^a-zA-Z0-9.\-]/g, '_');
+}
 /* ============================================================
    AUTENTICAÇÃO / TELA DE ABERTURA
    ============================================================ */
@@ -525,7 +530,7 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
         const file = e.target.files[0];
         if (!file)
             return;
-        const path = char.id + '/' + Date.now() + '_' + file.name;
+        const path = char.id + '/' + Date.now() + '_' + sanitizeFileName(file.name);
         const { error: upErr } = await supabase.storage.from('avatars').upload(path, file, { upsert: true });
         if (upErr) {
             toast('Erro no upload: ' + upErr.message);
@@ -814,7 +819,7 @@ function MapView({ profile, toast }) {
         const file = e.target.files[0];
         if (!file)
             return;
-        const path = Date.now() + '_' + file.name;
+        const path = Date.now() + '_' + sanitizeFileName(file.name);
         const { error: upErr } = await supabase.storage.from('maps').upload(path, file, { upsert: true });
         if (upErr) {
             toast('Erro no upload: ' + upErr.message);
