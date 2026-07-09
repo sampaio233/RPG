@@ -566,7 +566,7 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
         const { error } = await supabase.from('characters').update({
             name: form.name, title: form.title, appearance: form.appearance, power: form.power,
             affiliation: form.affiliation, status: form.status, rank: form.rank, bio_public: form.bio_public,
-            admin_notes: form.admin_notes, owner_id: form.owner_id || null,
+            admin_notes: form.admin_notes, owner_id: form.owner_id || null, category: form.category || 'principal',
             forca: form.forca, agilidade: form.agilidade, inteligencia: form.inteligencia,
             hp_max: form.hp_max, mp_max: form.mp_max,
         }).eq('id', char.id);
@@ -774,6 +774,11 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
                             React.createElement("label", null, "Status"),
                             React.createElement("input", { value: form.status || '', onChange: e => setForm(Object.assign(Object.assign({}, form), { status: e.target.value })) })),
                         React.createElement("div", { className: "field" },
+                            React.createElement("label", null, "Categoria"),
+                            React.createElement("select", { value: form.category || 'principal', onChange: e => setForm(Object.assign(Object.assign({}, form), { category: e.target.value })) },
+                                React.createElement("option", { value: "principal" }, "Principal"),
+                                React.createElement("option", { value: "secundario" }, "Secund\u00E1rio"))),
+                        React.createElement("div", { className: "field" },
                             React.createElement("label", null, "Rank"),
                             React.createElement("select", { value: form.rank, onChange: e => setForm(Object.assign(Object.assign({}, form), { rank: e.target.value })) },
                                 React.createElement("option", { value: "S" }, "S"),
@@ -815,6 +820,7 @@ function CharactersView({ profile, toast, initialOpenId, clearInitialOpenId }) {
     const [openId, setOpenId] = useState(null);
     const [creating, setCreating] = useState(false);
     const [newName, setNewName] = useState('');
+    const [newCategory, setNewCategory] = useState('principal');
     useEffect(() => {
         if (initialOpenId) {
             setOpenId(initialOpenId);
@@ -829,7 +835,7 @@ function CharactersView({ profile, toast, initialOpenId, clearInitialOpenId }) {
     async function createChar() {
         if (!newName.trim())
             return;
-        const { error } = await supabase.from('characters').insert({ name: newName.trim() });
+        const { error } = await supabase.from('characters').insert({ name: newName.trim(), category: newCategory });
         if (error) {
             toast('Erro: ' + error.message);
             return;
@@ -839,6 +845,20 @@ function CharactersView({ profile, toast, initialOpenId, clearInitialOpenId }) {
         toast('Personagem criado.');
         load();
     }
+    function CharCard({ c }) {
+        return (React.createElement("div", { className: "char-card", key: c.id, onClick: () => setOpenId(c.id) },
+            c.avatar_url ? React.createElement("img", { className: "char-avatar", src: c.avatar_url, alt: c.name }) : React.createElement("div", { className: "char-avatar-placeholder" }, initialsOf(c.name)),
+            React.createElement("div", { className: "char-card-body" },
+                React.createElement("div", { className: "card-top" },
+                    React.createElement("div", null,
+                        React.createElement("div", { className: "card-name" }, c.name),
+                        React.createElement("div", { className: "card-power" }, c.power)),
+                    React.createElement("div", { className: "rank-badge " + rankClass(c.rank) },
+                        React.createElement("span", null, c.rank))),
+                React.createElement("p", { className: "card-desc" }, c.bio_public ? c.bio_public.slice(0, 90) : 'Sem biografia ainda.'))));
+    }
+    const principais = chars ? chars.filter(c => (c.category || 'principal') === 'principal') : [];
+    const secundarios = chars ? chars.filter(c => c.category === 'secundario') : [];
     return (React.createElement("section", null,
         React.createElement("h2", { className: "section-title" },
             React.createElement("span", { className: "tag" }, "02"),
@@ -850,21 +870,22 @@ function CharactersView({ profile, toast, initialOpenId, clearInitialOpenId }) {
                     React.createElement("div", { className: "field", style: { marginBottom: 0 } },
                         React.createElement("label", null, "Nome do personagem"),
                         React.createElement("input", { value: newName, onChange: e => setNewName(e.target.value), placeholder: "Nome" })),
-                    React.createElement("div", { style: { display: 'flex', gap: 10 } },
-                        React.createElement("button", { className: "btn-primary", onClick: createChar }, "Criar"),
-                        React.createElement("button", { className: "btn-ghost", onClick: () => setCreating(false) }, "Cancelar"))))))),
+                    React.createElement("div", { className: "field", style: { marginBottom: 0 } },
+                        React.createElement("label", null, "Categoria"),
+                        React.createElement("select", { value: newCategory, onChange: e => setNewCategory(e.target.value) },
+                            React.createElement("option", { value: "principal" }, "Principal"),
+                            React.createElement("option", { value: "secundario" }, "Secund\u00E1rio")))),
+                React.createElement("div", { style: { display: 'flex', gap: 10, marginTop: 12 } },
+                    React.createElement("button", { className: "btn-primary", onClick: createChar }, "Criar"),
+                    React.createElement("button", { className: "btn-ghost", onClick: () => setCreating(false) }, "Cancelar")))))),
         chars === null && React.createElement("p", { className: "loading" }, "Carregando personagens..."),
         chars && chars.length === 0 && React.createElement("div", { className: "empty-state" }, "Nenhum personagem cadastrado ainda."),
-        React.createElement("div", { className: "char-grid" }, chars && chars.map(c => (React.createElement("div", { className: "char-card", key: c.id, onClick: () => setOpenId(c.id) },
-            c.avatar_url ? React.createElement("img", { className: "char-avatar", src: c.avatar_url, alt: c.name }) : React.createElement("div", { className: "char-avatar-placeholder" }, initialsOf(c.name)),
-            React.createElement("div", { className: "char-card-body" },
-                React.createElement("div", { className: "card-top" },
-                    React.createElement("div", null,
-                        React.createElement("div", { className: "card-name" }, c.name),
-                        React.createElement("div", { className: "card-power" }, c.power)),
-                    React.createElement("div", { className: "rank-badge " + rankClass(c.rank) },
-                        React.createElement("span", null, c.rank))),
-                React.createElement("p", { className: "card-desc" }, c.bio_public ? c.bio_public.slice(0, 90) : 'Sem biografia ainda.')))))),
+        chars && principais.length > 0 && (React.createElement(React.Fragment, null,
+            React.createElement("h3", { style: { fontFamily: 'var(--font-display)', fontSize: 17, marginBottom: 14 } }, "Personagens Principais"),
+            React.createElement("div", { className: "char-grid", style: { marginBottom: 30 } }, principais.map(c => React.createElement(CharCard, { key: c.id, c: c }))))),
+        chars && secundarios.length > 0 && (React.createElement(React.Fragment, null,
+            React.createElement("h3", { style: { fontFamily: 'var(--font-display)', fontSize: 17, marginBottom: 14 } }, "Personagens Secund\u00E1rios"),
+            React.createElement("div", { className: "char-grid" }, secundarios.map(c => React.createElement(CharCard, { key: c.id, c: c }))))),
         openId && chars && (React.createElement(CharacterSheet, { char: chars.find(c => c.id === openId), profile: profile, onClose: () => setOpenId(null), onChanged: load, toast: toast }))));
 }
 /* ============================================================
@@ -882,6 +903,7 @@ function MapView({ profile, toast, goto, setActionLocation, openCharacter }) {
     const [locations, setLocations] = useState([]);
     const [characters, setCharacters] = useState([]);
     const [events, setEvents] = useState([]);
+    const [images, setImages] = useState([]);
     const [settings, setSettings] = useState(null);
     const [selected, setSelected] = useState(null);
     const [editMode, setEditMode] = useState(false);
@@ -889,6 +911,7 @@ function MapView({ profile, toast, goto, setActionLocation, openCharacter }) {
     const [creatingAt, setCreatingAt] = useState(null);
     const [newLoc, setNewLoc] = useState({ name: '', type: 'cidade' });
     const fileRef = useRef(null);
+    const galleryFileRef = useRef(null);
     async function load() {
         const { data: locs } = await supabase.from('map_locations').select('*').order('created_at');
         setLocations(locs || []);
@@ -902,10 +925,39 @@ function MapView({ profile, toast, goto, setActionLocation, openCharacter }) {
         const { data } = await supabase.from('story_posts').select('*').eq('location_id', locationId).order('created_at', { ascending: false });
         setEvents(data || []);
     }
+    async function loadImages(locationId) {
+        const { data } = await supabase.from('location_images').select('*').eq('location_id', locationId).order('created_at');
+        setImages(data || []);
+    }
+    async function uploadLocationImage(e) {
+        const file = e.target.files[0];
+        if (!file || !selected)
+            return;
+        const path = 'locations/' + selected.id + '/' + Date.now() + '_' + sanitizeFileName(file.name);
+        const { error: upErr } = await supabase.storage.from('maps').upload(path, file, { upsert: true });
+        if (upErr) {
+            toast('Erro no upload: ' + upErr.message);
+            return;
+        }
+        const { data } = supabase.storage.from('maps').getPublicUrl(path);
+        const { error } = await supabase.from('location_images').insert({ location_id: selected.id, image_url: data.publicUrl });
+        if (error) {
+            toast('Erro: ' + error.message);
+            return;
+        }
+        toast('Foto adicionada.');
+        loadImages(selected.id);
+    }
+    async function deleteLocationImage(imgId) {
+        await supabase.from('location_images').delete().eq('id', imgId);
+        toast('Foto removida.');
+        loadImages(selected.id);
+    }
     function selectLocation(loc) {
         setSelected(loc);
         setCreatingAt(null);
         loadEvents(loc.id);
+        loadImages(loc.id);
     }
     function handleMapClick(e) {
         if (!editMode || !isAdmin)
@@ -1049,6 +1101,16 @@ function MapView({ profile, toast, goto, setActionLocation, openCharacter }) {
                     React.createElement("h3", { className: "map-info-title" }, selected.name),
                     React.createElement("p", { style: { color: 'var(--muted)', fontSize: 14, marginBottom: 10 } }, selected.description),
                     selected.current_story && React.createElement("p", { style: { fontSize: 14, lineHeight: 1.6, marginBottom: 14 } }, selected.current_story),
+                    React.createElement("div", { style: { marginBottom: 14 } },
+                        React.createElement("div", { className: "attr-label", style: { marginBottom: 6 } }, "Fotos do local"),
+                        React.createElement("div", { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
+                            images.map(img => (React.createElement("div", { key: img.id, style: { position: 'relative' } },
+                                React.createElement("img", { src: img.image_url, alt: "", style: { width: 76, height: 76, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)', cursor: 'pointer' }, onClick: () => window.open(img.image_url, '_blank') }),
+                                isAdmin && (React.createElement("button", { onClick: () => deleteLocationImage(img.id), title: "Remover", style: { position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: '50%', background: 'var(--magenta)', color: '#fff', border: 'none', fontSize: 11, lineHeight: 1, cursor: 'pointer' } }, "\u2715"))))),
+                            images.length === 0 && React.createElement("p", { className: "muted", style: { fontSize: 13 } }, "Nenhuma foto deste local ainda.")),
+                        isAdmin && (React.createElement(React.Fragment, null,
+                            React.createElement("button", { className: "btn-ghost btn-sm", style: { marginTop: 8 }, onClick: () => galleryFileRef.current.click() }, "+ Adicionar foto"),
+                            React.createElement("input", { type: "file", accept: "image/*", ref: galleryFileRef, style: { display: 'none' }, onChange: uploadLocationImage })))),
                     React.createElement("div", { style: { marginBottom: 14 } },
                         React.createElement("div", { className: "attr-label", style: { marginBottom: 6 } }, "Personagens presentes"),
                         presentChars.length === 0 && React.createElement("p", { className: "muted", style: { fontSize: 13 } }, "Nenhum personagem aqui no momento."),
