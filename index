@@ -424,12 +424,17 @@ function AppearanceMenu() {
 function ClassesView({ profile, toast }) {
     const isAdmin = profile.role === 'admin';
     const [classes, setClasses] = useState(null);
+    const [myClassId, setMyClassId] = useState(null);
     const [creating, setCreating] = useState(false);
     const [form, setForm] = useState({ name: '', description: '', icon: '⚔️', tier: 1, req_level: 1, evolves_to_id: '', base_forca: 50, base_agilidade: 50, base_inteligencia: 50 });
     const [editingId, setEditingId] = useState(null);
     async function load() {
         const { data } = await supabase.from('classes').select('*').order('tier').order('req_level');
         setClasses(data || []);
+        if (!isAdmin) {
+            const { data: mc } = await supabase.from('characters').select('class_id').eq('owner_id', profile.id).maybeSingle();
+            setMyClassId(mc ? mc.class_id : null);
+        }
     }
     useEffect(() => { load(); }, []);
     function startCreate() {
@@ -523,7 +528,7 @@ function ClassesView({ profile, toast }) {
                     React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => setCreating(false) }, "Cancelar")))))),
         classes === null && React.createElement("p", { className: "loading" }, "Carregando classes..."),
         classes && classes.length === 0 && React.createElement("div", { className: "empty-state" }, "Nenhuma classe cadastrada ainda."),
-        React.createElement("div", { className: "char-grid" }, classes && classes.map(c => (React.createElement("div", { className: "char-card", key: c.id, style: { cursor: 'default' } },
+        React.createElement("div", { className: "char-grid" }, classes && classes.filter(c => isAdmin || c.tier === 1 || c.id === myClassId).map(c => (React.createElement("div", { className: "char-card", key: c.id, style: { cursor: 'default' } },
             React.createElement("div", { className: "char-card-body" },
                 React.createElement("div", { className: "card-top" },
                     React.createElement("div", null,
@@ -537,7 +542,7 @@ function ClassesView({ profile, toast }) {
                             " \u00B7 a partir do n\u00EDvel ",
                             c.req_level))),
                 React.createElement("p", { className: "card-desc" }, c.description || 'Sem descrição ainda.'),
-                c.evolves_to_id && classes.find(x => x.id === c.evolves_to_id) && (React.createElement("p", { style: { fontSize: 12, color: 'var(--gold)', marginTop: 8 } },
+                isAdmin && c.evolves_to_id && classes.find(x => x.id === c.evolves_to_id) && (React.createElement("p", { style: { fontSize: 12, color: 'var(--gold)', marginTop: 8 } },
                     "Evolui para: ",
                     classes.find(x => x.id === c.evolves_to_id).icon,
                     " ",
@@ -1181,13 +1186,16 @@ function MapView({ profile, toast, goto, setActionLocation, openCharacter }) {
     async function load() {
         const { data: locs } = await supabase.from('map_locations').select('*').order('created_at');
         setLocations(locs || []);
-        const { data: chars } = await supabase.from('characters').select('id,name,avatar_url,rank,current_location_id');
-        setCharacters(chars || []);
         const { data: s } = await supabase.from('settings').select('*').eq('id', 1).single();
         setSettings(s);
-        if (!isAdmin) {
+        if (isAdmin) {
+            const { data: chars } = await supabase.from('characters').select('id,name,avatar_url,rank,current_location_id');
+            setCharacters(chars || []);
+        }
+        else {
             const { data: mc } = await supabase.from('characters').select('*').eq('owner_id', profile.id).eq('status', 'aprovado').maybeSingle();
             setMyChar(mc || null);
+            setCharacters(mc ? [mc] : []);
         }
     }
     useEffect(() => { load(); }, []);
@@ -1340,6 +1348,7 @@ function MapView({ profile, toast, goto, setActionLocation, openCharacter }) {
         : {};
     const presentChars = selected ? characters.filter(c => c.current_location_id === selected.id) : [];
     const unassignedChars = characters.filter(c => !selected || c.current_location_id !== selected.id);
+    const canAccessSelected = isAdmin || (selected && myChar && myChar.current_location_id === selected.id);
     return (React.createElement("section", null,
         React.createElement("h2", { className: "section-title" },
             React.createElement("span", { className: "tag" }, "03"),
@@ -1398,7 +1407,14 @@ function MapView({ profile, toast, goto, setActionLocation, openCharacter }) {
                     React.createElement("div", { style: { display: 'flex', gap: 10 } },
                         React.createElement("button", { className: "btn-primary btn-sm", onClick: saveLocation }, "Salvar"),
                         React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => setEditingLoc(null) }, "Cancelar")))),
-                selected && !creatingAt && (!editingLoc || editingLoc.id !== selected.id) && (React.createElement("div", null,
+                selected && !creatingAt && !canAccessSelected && (!editingLoc || editingLoc.id !== selected.id) && (React.createElement("div", null,
+                    React.createElement("p", { className: "map-info-tag" },
+                        (LOCATION_TYPES[selected.type] || LOCATION_TYPES.cidade).icon,
+                        " ",
+                        (LOCATION_TYPES[selected.type] || LOCATION_TYPES.cidade).label),
+                    React.createElement("h3", { className: "map-info-title" }, selected.name),
+                    React.createElement("p", { className: "muted", style: { fontSize: 13.5, marginTop: 10 } }, "Seu personagem n\u00E3o est\u00E1 aqui. Voc\u00EA s\u00F3 pode ver os detalhes do local onde ele se encontra no momento."))),
+                selected && !creatingAt && canAccessSelected && (!editingLoc || editingLoc.id !== selected.id) && (React.createElement("div", null,
                     React.createElement("p", { className: "map-info-tag" },
                         (LOCATION_TYPES[selected.type] || LOCATION_TYPES.cidade).icon,
                         " ",
