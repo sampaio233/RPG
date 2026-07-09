@@ -193,12 +193,15 @@ label{ font-size:12px; color:var(--muted); text-transform:uppercase; letter-spac
   background-color:#0c0c16; }
 .map-surface.no-image{ background:radial-gradient(circle at 20% 30%, rgba(139,63,251,.3), transparent 45%),
   radial-gradient(circle at 80% 20%, rgba(255,61,154,.25), transparent 40%), linear-gradient(160deg,#10101c,#05050a 70%); }
-.map-point{ position:absolute; width:18px; height:18px; border-radius:50%; background:var(--purple); border:2px solid var(--text);
+.map-point{ position:absolute; width:30px; height:30px; border-radius:50%; background:var(--panel-raised); border:2px solid var(--purple);
+  display:flex; align-items:center; justify-content:center; font-size:15px;
   transform:translate(-50%,-50%); cursor:pointer; z-index:2; box-shadow:0 0 0 0 rgba(139,63,251,.6); animation:pulse 2.2s infinite; }
-.map-point.current{ background:var(--gold); border-color:var(--gold); }
+.map-point-icon{ line-height:1; }
+.map-point.current{ border-color:var(--gold); box-shadow:0 0 14px rgba(255,210,63,.5); }
 .map-point.selected{ outline:2px solid var(--cyan); }
+.map-point.creating{ border-color:var(--cyan); border-style:dashed; animation:none; opacity:.85; }
 @keyframes pulse{ 0%{box-shadow:0 0 0 0 rgba(139,63,251,.5);} 70%{box-shadow:0 0 0 14px rgba(139,63,251,0);} 100%{box-shadow:0 0 0 0 rgba(139,63,251,0);} }
-.map-label{ position:absolute; top:22px; left:50%; transform:translateX(-50%); font-size:10.5px; white-space:nowrap; background:rgba(10,10,18,.85);
+.map-label{ position:absolute; top:32px; left:50%; transform:translateX(-50%); font-size:10.5px; white-space:nowrap; background:rgba(10,10,18,.85);
   padding:2px 7px; border-radius:6px; pointer-events:none; opacity:0; transition:opacity .2s ease; }
 .map-point:hover .map-label{ opacity:1; }
 .map-info{ background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:22px; display:flex; flex-direction:column; justify-content:center; }
@@ -435,9 +438,13 @@ function Nav({ view, setView, profile, onLogout }) {
 function HomeView({ profile, toast }) {
     const [posts, setPosts] = useState(null);
     const [content, setContent] = useState('');
+    const [arc, setArc] = useState('');
     const [locations, setLocations] = useState([]);
     const [locationId, setLocationId] = useState('');
     const [posting, setPosting] = useState(false);
+    const [arcFilter, setArcFilter] = useState('');
+    const [uploadedImage, setUploadedImage] = useState(null);
+    const fileRef = useRef(null);
     async function load() {
         const { data } = await supabase.from('story_posts').select('*, location:map_locations(name)').order('created_at', { ascending: false });
         setPosts(data || []);
@@ -450,12 +457,27 @@ function HomeView({ profile, toast }) {
             .subscribe();
         return () => supabase.removeChannel(channel);
     }, []);
+    async function handleImagePick(e) {
+        const file = e.target.files[0];
+        if (!file)
+            return;
+        const path = Date.now() + '_' + sanitizeFileName(file.name);
+        const { error: upErr } = await supabase.storage.from('story').upload(path, file, { upsert: true });
+        if (upErr) {
+            toast('Erro no upload: ' + upErr.message);
+            return;
+        }
+        const { data } = supabase.storage.from('story').getPublicUrl(path);
+        setUploadedImage(data.publicUrl);
+        toast('Imagem anexada.');
+    }
     async function publish() {
         if (!content.trim())
             return;
         setPosting(true);
         const { error } = await supabase.from('story_posts').insert({
             author_id: profile.id, content: content.trim(), location_id: locationId || null,
+            arc: arc.trim() || null, image_url: uploadedImage,
         });
         setPosting(false);
         if (error) {
@@ -464,29 +486,44 @@ function HomeView({ profile, toast }) {
         }
         setContent('');
         setLocationId('');
+        setUploadedImage(null);
         toast('Capítulo publicado!');
     }
+    const arcs = posts ? Array.from(new Set(posts.map(p => p.arc).filter(Boolean))) : [];
+    const visiblePosts = posts ? posts.filter(p => !arcFilter || p.arc === arcFilter) : [];
     return (React.createElement("section", null,
         React.createElement("h2", { className: "section-title" },
             React.createElement("span", { className: "tag" }, "01"),
             " A Hist\u00F3ria At\u00E9 Agora"),
         profile.role === 'admin' && (React.createElement("div", { className: "composer" },
-            React.createElement("div", { className: "field" },
-                React.createElement("label", null, "Novo cap\u00EDtulo"),
-                React.createElement("textarea", { rows: "4", value: content, onChange: e => setContent(e.target.value), placeholder: "Escreva a continua\u00E7\u00E3o da hist\u00F3ria..." })),
-            React.createElement("div", { className: "grid2", style: { alignItems: 'end' } },
-                React.createElement("div", { className: "field", style: { marginBottom: 0 } },
+            React.createElement("div", { className: "grid2" },
+                React.createElement("div", { className: "field" },
+                    React.createElement("label", null, "Arco (opcional)"),
+                    React.createElement("input", { value: arc, onChange: e => setArc(e.target.value), placeholder: "Ex: O Despertar" })),
+                React.createElement("div", { className: "field" },
                     React.createElement("label", null, "Local (opcional)"),
                     React.createElement("select", { value: locationId, onChange: e => setLocationId(e.target.value) },
                         React.createElement("option", { value: "" }, "\u2014 nenhum \u2014"),
-                        locations.map(l => React.createElement("option", { key: l.id, value: l.id }, l.name)))),
-                React.createElement("button", { className: "btn-primary", onClick: publish, disabled: posting }, posting ? 'Publicando...' : 'Publicar capítulo')))),
+                        locations.map(l => React.createElement("option", { key: l.id, value: l.id }, l.name))))),
+            React.createElement("div", { className: "field" },
+                React.createElement("label", null, "Novo cap\u00EDtulo"),
+                React.createElement("textarea", { rows: "4", value: content, onChange: e => setContent(e.target.value), placeholder: "Escreva a continua\u00E7\u00E3o da hist\u00F3ria..." })),
+            React.createElement("div", { style: { display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' } },
+                React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => fileRef.current.click() }, uploadedImage ? '🖼️ Imagem anexada ✓' : '🖼️ Anexar imagem'),
+                React.createElement("input", { type: "file", accept: "image/*", ref: fileRef, style: { display: 'none' }, onChange: handleImagePick }),
+                React.createElement("button", { className: "btn-primary", onClick: publish, disabled: posting, style: { marginLeft: 'auto' } }, posting ? 'Publicando...' : 'Publicar capítulo')))),
+        arcs.length > 0 && (React.createElement("div", { style: { display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' } },
+            React.createElement("button", { className: "skill-chip " + (arcFilter === '' ? 'active' : ''), onClick: () => setArcFilter('') }, "Todos os arcos"),
+            arcs.map(a => React.createElement("button", { key: a, className: "skill-chip " + (arcFilter === a ? 'active' : ''), onClick: () => setArcFilter(a) }, a)))),
         posts === null && React.createElement("p", { className: "loading" }, "Carregando hist\u00F3ria..."),
-        posts !== null && posts.length === 0 && React.createElement("div", { className: "empty-state" }, "A hist\u00F3ria ainda n\u00E3o come\u00E7ou. Aguarde o mestre publicar o primeiro cap\u00EDtulo."),
-        posts && posts.map(p => (React.createElement("div", { className: "story-post", key: p.id },
+        posts !== null && visiblePosts.length === 0 && React.createElement("div", { className: "empty-state" }, "A hist\u00F3ria ainda n\u00E3o come\u00E7ou. Aguarde o mestre publicar o primeiro cap\u00EDtulo."),
+        visiblePosts.map(p => (React.createElement("div", { className: "story-post", key: p.id },
             React.createElement("div", { className: "story-meta" },
-                React.createElement("span", null, "Mestre"),
+                React.createElement("span", null,
+                    "Mestre",
+                    p.arc ? ' · ' + p.arc : ''),
                 React.createElement("span", null, new Date(p.created_at).toLocaleString('pt-BR'))),
+            p.image_url && React.createElement("img", { src: p.image_url, alt: "", style: { width: '100%', borderRadius: 10, marginBottom: 12, maxHeight: 320, objectFit: 'cover' } }),
             React.createElement("div", { className: "story-content" }, p.content),
             p.location && React.createElement("span", { className: "story-loc" },
                 "\uD83D\uDCCD ",
@@ -504,12 +541,21 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
     const [edit, setEdit] = useState(false);
     const [form, setForm] = useState(Object.assign({}, char));
     const [profiles, setProfiles] = useState([]);
+    const [locations, setLocations] = useState([]);
+    const [actionHistory, setActionHistory] = useState([]);
     const fileRef = useRef(null);
     useEffect(() => {
         supabase.from('skills').select('*').eq('character_id', char.id).order('depth').then(({ data }) => setSkills(data || []));
         if (isAdmin)
             supabase.from('profiles').select('id, display_name, email').then(({ data }) => setProfiles(data || []));
+        supabase.from('map_locations').select('id,name').then(({ data }) => setLocations(data || []));
+        supabase.from('actions').select('*, location:map_locations(name)').eq('character_id', char.id).order('created_at', { ascending: false }).limit(20).then(({ data }) => setActionHistory(data || []));
     }, [char.id]);
+    async function moveToLocation(locId) {
+        await supabase.from('characters').update({ current_location_id: locId || null }).eq('id', char.id);
+        toast('Local atual do personagem atualizado.');
+        onChanged();
+    }
     async function saveEdit() {
         const { error } = await supabase.from('characters').update({
             name: form.name, title: form.title, appearance: form.appearance, power: form.power,
@@ -595,7 +641,7 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
                         React.createElement("div", { className: "sheet-power" }, char.power))),
                 isAdmin && (React.createElement("button", { className: "btn-primary btn-sm sheet-hero-upload", onClick: () => fileRef.current.click() }, char.avatar_url ? '🖼️ Trocar foto' : '🖼️ Adicionar foto do personagem')),
                 React.createElement("input", { type: "file", accept: "image/*", ref: fileRef, style: { display: 'none' }, onChange: uploadAvatar })),
-            React.createElement("div", { className: "tabs" }, ['sobre', 'ficha', 'habilidades'].map(t => (React.createElement("button", { key: t, className: "tab-btn " + (tab === t ? 'active' : ''), onClick: () => setTab(t) }, t === 'sobre' ? 'Sobre' : t === 'ficha' ? 'Ficha & EXP' : 'Habilidades')))),
+            React.createElement("div", { className: "tabs" }, ['sobre', 'ficha', 'habilidades', 'historico'].map(t => (React.createElement("button", { key: t, className: "tab-btn " + (tab === t ? 'active' : ''), onClick: () => setTab(t) }, t === 'sobre' ? 'Sobre' : t === 'ficha' ? 'Ficha & EXP' : t === 'habilidades' ? 'Habilidades' : 'Histórico')))),
             tab === 'sobre' && (React.createElement("div", { className: "tab-panel" },
                 React.createElement("p", null,
                     React.createElement("b", null, "Afilia\u00E7\u00E3o:"),
@@ -609,7 +655,16 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
                     React.createElement("b", null, "Apar\u00EAncia:"),
                     " ",
                     React.createElement("span", { className: "muted" }, char.appearance || '—')),
+                React.createElement("p", { style: { marginTop: 8 } },
+                    React.createElement("b", null, "Local atual:"),
+                    " ",
+                    React.createElement("span", { className: "muted" }, (locations.find(l => l.id === char.current_location_id) || {}).name || 'Nenhum')),
                 React.createElement("p", { style: { marginTop: 14 } }, char.bio_public),
+                isAdmin && (React.createElement("div", { className: "admin-box" },
+                    React.createElement("div", { className: "admin-box-title" }, "Mover para local"),
+                    React.createElement("select", { defaultValue: char.current_location_id || '', onChange: e => moveToLocation(e.target.value) },
+                        React.createElement("option", { value: "" }, "\u2014 nenhum \u2014"),
+                        locations.map(l => React.createElement("option", { key: l.id, value: l.id }, l.name))))),
                 isAdmin && (React.createElement("div", { className: "admin-box" },
                     React.createElement("div", { className: "admin-box-title" }, "Notas do mestre (s\u00F3 admin v\u00EA)"),
                     React.createElement("textarea", { rows: "3", defaultValue: char.admin_notes || '', onBlur: async (e) => {
@@ -639,7 +694,7 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
                             React.createElement("div", { className: "gauge-fill gauge-hp", style: { width: (100 * char.hp_current / char.hp_max) + '%' } }))),
                     React.createElement("div", null,
                         React.createElement("div", { className: "stat-row" },
-                            React.createElement("span", null, "MP"),
+                            React.createElement("span", null, "Energia"),
                             React.createElement("b", null,
                                 char.mp_current,
                                 "/",
@@ -675,6 +730,26 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
                             s.req_level),
                         React.createElement("div", { className: "skill-desc" }, s.desc || s.description)),
                     !s.unlocked && (isOwner || isAdmin) && char.level >= s.req_level && char.skill_points > 0 && (React.createElement("button", { className: "btn-primary btn-sm", onClick: () => unlockSkill(s) }, "Desbloquear"))))))),
+            tab === 'historico' && (React.createElement("div", { className: "tab-panel" },
+                actionHistory.length === 0 && React.createElement("p", { className: "muted" }, "Nenhuma a\u00E7\u00E3o registrada ainda para este personagem."),
+                actionHistory.map(a => (React.createElement("div", { key: a.id, className: "roll-card" },
+                    React.createElement("div", { className: "story-meta" },
+                        React.createElement("span", null,
+                            "Turno ",
+                            a.turn,
+                            a.location ? ' · 📍 ' + a.location.name : ''),
+                        React.createElement("span", null, new Date(a.created_at).toLocaleString('pt-BR'))),
+                    React.createElement("p", { style: { fontSize: 13.5, marginBottom: 8 } }, a.action_text),
+                    React.createElement("span", { className: "roll-result " + (a.success ? 'roll-success' : 'roll-fail'), style: { fontSize: 13.5, padding: '3px 10px' } },
+                        a.roll,
+                        " + ",
+                        a.modifier,
+                        " = ",
+                        a.total,
+                        " vs CD ",
+                        a.dc,
+                        " \u2014 ",
+                        a.success ? 'SUCESSO' : 'FRACASSO')))))),
             canEdit && (React.createElement("div", { className: "admin-box", style: { marginTop: 20 } },
                 React.createElement("div", { className: "admin-box-title" }, "Editar personagem (mestre)"),
                 !edit && React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => { setForm(Object.assign({}, char)); setEdit(true); } }, "Editar dados"),
@@ -783,36 +858,67 @@ function CharactersView({ profile, toast }) {
 /* ============================================================
    MAPA
    ============================================================ */
-function MapView({ profile, toast }) {
+const LOCATION_TYPES = {
+    cidade: { icon: '🏰', label: 'Cidade' },
+    ruina: { icon: '🏚️', label: 'Ruína' },
+    batalha: { icon: '⚔️', label: 'Batalha' },
+    evento: { icon: '🧠', label: 'Evento' },
+    corrompida: { icon: '☠️', label: 'Área Corrompida' },
+};
+function MapView({ profile, toast, goto, setActionLocation }) {
     const isAdmin = profile.role === 'admin';
     const [locations, setLocations] = useState([]);
+    const [characters, setCharacters] = useState([]);
+    const [events, setEvents] = useState([]);
     const [settings, setSettings] = useState(null);
     const [selected, setSelected] = useState(null);
     const [editMode, setEditMode] = useState(false);
     const [editingLoc, setEditingLoc] = useState(null);
+    const [creatingAt, setCreatingAt] = useState(null);
+    const [newLoc, setNewLoc] = useState({ name: '', type: 'cidade' });
     const fileRef = useRef(null);
     async function load() {
         const { data: locs } = await supabase.from('map_locations').select('*').order('created_at');
         setLocations(locs || []);
+        const { data: chars } = await supabase.from('characters').select('id,name,avatar_url,rank,current_location_id');
+        setCharacters(chars || []);
         const { data: s } = await supabase.from('settings').select('*').eq('id', 1).single();
         setSettings(s);
     }
     useEffect(() => { load(); }, []);
-    async function handleMapClick(e) {
+    async function loadEvents(locationId) {
+        const { data } = await supabase.from('story_posts').select('*').eq('location_id', locationId).order('created_at', { ascending: false });
+        setEvents(data || []);
+    }
+    function selectLocation(loc) {
+        setSelected(loc);
+        setCreatingAt(null);
+        loadEvents(loc.id);
+    }
+    function handleMapClick(e) {
         if (!editMode || !isAdmin)
             return;
         const rect = e.currentTarget.getBoundingClientRect();
         const x = ((e.clientX - rect.left) / rect.width * 100).toFixed(1);
         const y = ((e.clientY - rect.top) / rect.height * 100).toFixed(1);
-        const name = prompt('Nome do novo local:');
-        if (!name)
+        setSelected(null);
+        setNewLoc({ name: '', type: 'cidade' });
+        setCreatingAt({ x, y });
+    }
+    async function confirmCreateLocation() {
+        if (!newLoc.name.trim()) {
+            toast('Digite um nome para o local.');
             return;
-        const { error } = await supabase.from('map_locations').insert({ name, x, y, description: '' });
+        }
+        const { error } = await supabase.from('map_locations').insert({
+            name: newLoc.name.trim(), type: newLoc.type, x: creatingAt.x, y: creatingAt.y, description: '',
+        });
         if (error) {
             toast('Erro: ' + error.message);
             return;
         }
         toast('Local adicionado.');
+        setCreatingAt(null);
         load();
     }
     async function uploadMapImage(e) {
@@ -832,7 +938,7 @@ function MapView({ profile, toast }) {
     }
     async function saveLocation() {
         const { error } = await supabase.from('map_locations').update({
-            name: editingLoc.name, description: editingLoc.description, current_story: editingLoc.current_story,
+            name: editingLoc.name, type: editingLoc.type, description: editingLoc.description, current_story: editingLoc.current_story,
         }).eq('id', editingLoc.id);
         if (error) {
             toast('Erro: ' + error.message);
@@ -848,9 +954,22 @@ function MapView({ profile, toast }) {
         toast('Local atual definido: ' + loc.name);
         load();
     }
+    async function moveCharacterHere(charId, locId) {
+        if (!charId)
+            return;
+        await supabase.from('characters').update({ current_location_id: locId }).eq('id', charId);
+        toast('Personagem movido para cá.');
+        load();
+    }
+    function goAct(loc) {
+        setActionLocation(loc);
+        goto('actions');
+    }
     const mapStyle = settings && settings.map_image_url
         ? { backgroundImage: 'url(' + settings.map_image_url + ')' }
         : {};
+    const presentChars = selected ? characters.filter(c => c.current_location_id === selected.id) : [];
+    const unassignedChars = characters.filter(c => !selected || c.current_location_id !== selected.id);
     return (React.createElement("section", null,
         React.createElement("h2", { className: "section-title" },
             React.createElement("span", { className: "tag" }, "03"),
@@ -860,16 +979,40 @@ function MapView({ profile, toast }) {
             React.createElement("input", { type: "file", accept: "image/*", ref: fileRef, style: { display: 'none' }, onChange: uploadMapImage }),
             React.createElement("button", { className: "btn-sm " + (editMode ? 'btn-primary' : 'btn-ghost'), onClick: () => setEditMode(!editMode) }, editMode ? 'Sair do modo edição' : 'Modo edição (clique no mapa para adicionar local)'))),
         React.createElement("div", { className: "map-wrap" },
-            React.createElement("div", { className: "map-surface " + (settings && settings.map_image_url ? '' : 'no-image'), style: mapStyle, onClick: handleMapClick }, locations.map(loc => (React.createElement("div", { key: loc.id, className: "map-point " + (settings && settings.current_location_id === loc.id ? 'current ' : '') + (selected && selected.id === loc.id ? 'selected' : ''), style: { left: loc.x + '%', top: loc.y + '%' }, onClick: (e) => { e.stopPropagation(); setSelected(loc); } },
-                React.createElement("span", { className: "map-label" }, loc.name))))),
+            React.createElement("div", { className: "map-surface " + (settings && settings.map_image_url ? '' : 'no-image'), style: mapStyle, onClick: handleMapClick },
+                locations.map(loc => (React.createElement("div", { key: loc.id, className: "map-point " + (settings && settings.current_location_id === loc.id ? 'current ' : '') + (selected && selected.id === loc.id ? 'selected' : ''), style: { left: loc.x + '%', top: loc.y + '%' }, onClick: (e) => { e.stopPropagation(); selectLocation(loc); } },
+                    React.createElement("span", { className: "map-point-icon" }, (LOCATION_TYPES[loc.type] || LOCATION_TYPES.cidade).icon),
+                    React.createElement("span", { className: "map-label" }, loc.name)))),
+                creatingAt && (React.createElement("div", { className: "map-point creating", style: { left: creatingAt.x + '%', top: creatingAt.y + '%' } },
+                    React.createElement("span", { className: "map-point-icon" }, "\uD83D\uDCCD")))),
             React.createElement("div", { className: "map-info" },
-                !selected && React.createElement("p", { className: "map-hint" },
+                !selected && !creatingAt && React.createElement("p", { className: "map-hint" },
                     "Toque em um ponto do mapa para revelar sua hist\u00F3ria.",
                     isAdmin ? ' (Ative o modo edição para adicionar novos locais.)' : ''),
+                creatingAt && (React.createElement("div", null,
+                    React.createElement("p", { className: "map-info-tag" }, "Novo local"),
+                    React.createElement("div", { className: "field" },
+                        React.createElement("label", null, "Nome"),
+                        React.createElement("input", { value: newLoc.name, onChange: e => setNewLoc(Object.assign(Object.assign({}, newLoc), { name: e.target.value })), placeholder: "Nome do local" })),
+                    React.createElement("div", { className: "field" },
+                        React.createElement("label", null, "Tipo"),
+                        React.createElement("select", { value: newLoc.type, onChange: e => setNewLoc(Object.assign(Object.assign({}, newLoc), { type: e.target.value })) }, Object.keys(LOCATION_TYPES).map(k => React.createElement("option", { key: k, value: k },
+                            LOCATION_TYPES[k].icon,
+                            " ",
+                            LOCATION_TYPES[k].label)))),
+                    React.createElement("div", { style: { display: 'flex', gap: 10 } },
+                        React.createElement("button", { className: "btn-primary btn-sm", onClick: confirmCreateLocation }, "Criar local"),
+                        React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => setCreatingAt(null) }, "Cancelar")))),
                 selected && editingLoc && editingLoc.id === selected.id && (React.createElement("div", null,
                     React.createElement("div", { className: "field" },
                         React.createElement("label", null, "Nome"),
                         React.createElement("input", { value: editingLoc.name, onChange: e => setEditingLoc(Object.assign(Object.assign({}, editingLoc), { name: e.target.value })) })),
+                    React.createElement("div", { className: "field" },
+                        React.createElement("label", null, "Tipo"),
+                        React.createElement("select", { value: editingLoc.type || 'cidade', onChange: e => setEditingLoc(Object.assign(Object.assign({}, editingLoc), { type: e.target.value })) }, Object.keys(LOCATION_TYPES).map(k => React.createElement("option", { key: k, value: k },
+                            LOCATION_TYPES[k].icon,
+                            " ",
+                            LOCATION_TYPES[k].label)))),
                     React.createElement("div", { className: "field" },
                         React.createElement("label", null, "Descri\u00E7\u00E3o do local"),
                         React.createElement("textarea", { rows: "3", value: editingLoc.description || '', onChange: e => setEditingLoc(Object.assign(Object.assign({}, editingLoc), { description: e.target.value })) })),
@@ -879,19 +1022,52 @@ function MapView({ profile, toast }) {
                     React.createElement("div", { style: { display: 'flex', gap: 10 } },
                         React.createElement("button", { className: "btn-primary btn-sm", onClick: saveLocation }, "Salvar"),
                         React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => setEditingLoc(null) }, "Cancelar")))),
-                selected && (!editingLoc || editingLoc.id !== selected.id) && (React.createElement("div", null,
-                    React.createElement("p", { className: "map-info-tag" }, settings && settings.current_location_id === selected.id ? 'Local atual da história' : 'Local do mapa'),
+                selected && !creatingAt && (!editingLoc || editingLoc.id !== selected.id) && (React.createElement("div", null,
+                    React.createElement("p", { className: "map-info-tag" },
+                        (LOCATION_TYPES[selected.type] || LOCATION_TYPES.cidade).icon,
+                        " ",
+                        (LOCATION_TYPES[selected.type] || LOCATION_TYPES.cidade).label,
+                        settings && settings.current_location_id === selected.id ? ' · local atual da história' : ''),
                     React.createElement("h3", { className: "map-info-title" }, selected.name),
                     React.createElement("p", { style: { color: 'var(--muted)', fontSize: 14, marginBottom: 10 } }, selected.description),
-                    selected.current_story && React.createElement("p", { style: { fontSize: 14, lineHeight: 1.6 } }, selected.current_story),
-                    isAdmin && (React.createElement("div", { style: { display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' } },
-                        React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => setEditingLoc(Object.assign({}, selected)) }, "Editar local"),
-                        React.createElement("button", { className: "btn-primary btn-sm", onClick: () => setCurrent(selected) }, "Marcar como local atual")))))))));
+                    selected.current_story && React.createElement("p", { style: { fontSize: 14, lineHeight: 1.6, marginBottom: 14 } }, selected.current_story),
+                    React.createElement("div", { style: { marginBottom: 14 } },
+                        React.createElement("div", { className: "attr-label", style: { marginBottom: 6 } }, "Personagens presentes"),
+                        presentChars.length === 0 && React.createElement("p", { className: "muted", style: { fontSize: 13 } }, "Nenhum personagem aqui no momento."),
+                        presentChars.map(c => (React.createElement("span", { key: c.id, style: { display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 20, padding: '4px 10px', marginRight: 6, marginBottom: 6, fontSize: 12.5 } },
+                            React.createElement("span", { className: "rank-badge " + rankClass(c.rank), style: { width: 18, height: 18, fontSize: 9, borderRadius: 4 } },
+                                React.createElement("span", null, c.rank)),
+                            c.name)))),
+                    events.length > 0 && (React.createElement("div", { style: { marginBottom: 14 } },
+                        React.createElement("div", { className: "attr-label", style: { marginBottom: 6 } }, "Hist\u00F3rico de eventos"),
+                        events.map(ev => (React.createElement("div", { key: ev.id, style: { fontSize: 12.5, color: 'var(--muted)', marginBottom: 6, borderLeft: '2px solid var(--border)', paddingLeft: 8 } },
+                            React.createElement("span", { style: { color: 'var(--cyan)' } }, new Date(ev.created_at).toLocaleDateString('pt-BR')),
+                            " \u2014 ",
+                            ev.content.slice(0, 80),
+                            ev.content.length > 80 ? '...' : ''))))),
+                    React.createElement("div", { style: { display: 'flex', gap: 10, flexWrap: 'wrap' } },
+                        React.createElement("button", { className: "btn-primary btn-sm", onClick: () => goAct(selected) }, "Executar a\u00E7\u00E3o neste local"),
+                        isAdmin && React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => setEditingLoc(Object.assign({}, selected)) }, "Editar local"),
+                        isAdmin && React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => setCurrent(selected) }, "Marcar como local atual")),
+                    isAdmin && (React.createElement("div", { className: "admin-box", style: { marginTop: 14 } },
+                        React.createElement("div", { className: "admin-box-title" }, "Mover personagem pra c\u00E1"),
+                        React.createElement("select", { onChange: e => { moveCharacterHere(e.target.value, selected.id); e.target.value = ''; }, defaultValue: "" },
+                            React.createElement("option", { value: "", disabled: true }, "Escolher personagem..."),
+                            unassignedChars.map(c => React.createElement("option", { key: c.id, value: c.id }, c.name)))))))))));
 }
 /* ============================================================
    AÇÕES & DADOS (d20)
    ============================================================ */
-function ActionsView({ profile, toast }) {
+function StatusPill({ status }) {
+    const map = {
+        pendente: { label: 'Pendente', cls: 'status-locked' },
+        aprovada: { label: 'Aprovada', cls: 'status-unlocked' },
+        rejeitada: { label: 'Rejeitada', cls: 'roll-fail' },
+    };
+    const s = map[status] || map.pendente;
+    return React.createElement("span", { className: "skill-status " + s.cls, style: { marginLeft: 8 } }, s.label);
+}
+function ActionsView({ profile, toast, actionLocation, clearActionLocation }) {
     const isAdmin = profile.role === 'admin';
     const [myChars, setMyChars] = useState([]);
     const [charId, setCharId] = useState('');
@@ -902,7 +1078,7 @@ function ActionsView({ profile, toast }) {
     const [feed, setFeed] = useState(null);
     const [settings, setSettings] = useState(null);
     async function loadFeed() {
-        const { data } = await supabase.from('actions').select('*, character:characters(name), player:profiles(display_name)').order('created_at', { ascending: false }).limit(50);
+        const { data } = await supabase.from('actions').select('*, character:characters(name), player:profiles(display_name), location:map_locations(name)').order('created_at', { ascending: false }).limit(50);
         setFeed(data || []);
     }
     async function loadSettings() {
@@ -949,6 +1125,7 @@ function ActionsView({ profile, toast }) {
         const { error } = await supabase.from('actions').insert({
             character_id: charId, player_id: profile.id, action_text: actionText.trim(),
             attribute, roll: dieRoll, modifier, total, dc, success, turn: currentTurn,
+            location_id: actionLocation ? actionLocation.id : null,
         });
         setRolling(false);
         if (error) {
@@ -957,11 +1134,17 @@ function ActionsView({ profile, toast }) {
         }
         setLastRoll({ dieRoll, modifier, total, dc, success });
         setActionText('');
+        clearActionLocation();
         toast(success ? 'Sucesso!' : 'Fracasso...');
     }
     async function respond(actionId, text) {
         await supabase.from('actions').update({ admin_response: text }).eq('id', actionId);
         toast('Resposta do mestre salva.');
+        loadFeed();
+    }
+    async function setStatus(actionId, status) {
+        await supabase.from('actions').update({ status }).eq('id', actionId);
+        toast(status === 'aprovada' ? 'Ação aprovada.' : 'Ação rejeitada.');
         loadFeed();
     }
     async function advanceTurn() {
@@ -971,6 +1154,36 @@ function ActionsView({ profile, toast }) {
             return;
         }
         toast('Turno ' + (currentTurn + 1) + ' iniciado!');
+    }
+    function ActionCard({ a, highlight }) {
+        return (React.createElement("div", { className: "roll-card", style: highlight ? { borderColor: 'var(--cyan)' } : {} },
+            React.createElement("div", { className: "story-meta" },
+                React.createElement("span", null,
+                    highlight ? '' : 'Turno ' + a.turn + ' · ',
+                    a.character ? a.character.name : '—',
+                    " \u00B7 ",
+                    a.player ? a.player.display_name : '',
+                    a.location ? ' · 📍 ' + a.location.name : ''),
+                !highlight && React.createElement("span", null, new Date(a.created_at).toLocaleString('pt-BR'))),
+            React.createElement("p", { style: { fontSize: 14, marginBottom: 8 } }, a.action_text),
+            React.createElement("span", { className: "roll-result " + (a.success ? 'roll-success' : 'roll-fail'), style: { fontSize: 15, padding: '3px 10px' } },
+                a.roll,
+                " + ",
+                a.modifier,
+                " = ",
+                a.total,
+                " vs CD ",
+                a.dc,
+                " \u2014 ",
+                a.success ? 'SUCESSO' : 'FRACASSO'),
+            React.createElement(StatusPill, { status: a.status || 'pendente' }),
+            a.admin_response && React.createElement("p", { style: { marginTop: 10, fontSize: 13.5, color: 'var(--cyan)' } },
+                "Mestre: ",
+                a.admin_response),
+            isAdmin && (React.createElement("div", { style: { display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' } },
+                (a.status || 'pendente') !== 'aprovada' && React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => setStatus(a.id, 'aprovada') }, "\u2713 Aprovar"),
+                (a.status || 'pendente') !== 'rejeitada' && React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => setStatus(a.id, 'rejeitada') }, "\u2715 Rejeitar"))),
+            isAdmin && !a.admin_response && (React.createElement(AdminRespond, { onSave: (text) => respond(a.id, text) }))));
     }
     return (React.createElement("section", null,
         React.createElement("h2", { className: "section-title" },
@@ -989,6 +1202,11 @@ function ActionsView({ profile, toast }) {
                 currentTurn + 1,
                 " \u2192")),
         myChars.length > 0 && (React.createElement("div", { className: "composer" },
+            actionLocation && (React.createElement("div", { style: { marginBottom: 14, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' } },
+                React.createElement("span", { style: { fontSize: 13, color: 'var(--gold)' } },
+                    "\uD83D\uDCCD Agindo em: ",
+                    React.createElement("b", null, actionLocation.name)),
+                React.createElement("button", { className: "btn-ghost btn-sm", onClick: clearActionLocation }, "Remover local"))),
             React.createElement("div", { className: "grid2" },
                 React.createElement("div", { className: "field" },
                     React.createElement("label", null, "Seu personagem"),
@@ -1034,55 +1252,11 @@ function ActionsView({ profile, toast }) {
             "Resumo do Turno ",
             currentTurn),
         turnActions.length === 0 && React.createElement("div", { className: "empty-state" }, "Ningu\u00E9m agiu neste turno ainda."),
-        turnActions.map(a => (React.createElement("div", { className: "roll-card", key: a.id, style: { borderColor: 'var(--cyan)' } },
-            React.createElement("div", { className: "story-meta" },
-                React.createElement("span", null,
-                    a.character ? a.character.name : '—',
-                    " \u00B7 ",
-                    a.player ? a.player.display_name : '')),
-            React.createElement("p", { style: { fontSize: 14, marginBottom: 8 } }, a.action_text),
-            React.createElement("span", { className: "roll-result " + (a.success ? 'roll-success' : 'roll-fail'), style: { fontSize: 15, padding: '3px 10px' } },
-                a.roll,
-                " + ",
-                a.modifier,
-                " = ",
-                a.total,
-                " vs CD ",
-                a.dc,
-                " \u2014 ",
-                a.success ? 'SUCESSO' : 'FRACASSO'),
-            a.admin_response && React.createElement("p", { style: { marginTop: 10, fontSize: 13.5, color: 'var(--cyan)' } },
-                "Mestre: ",
-                a.admin_response),
-            isAdmin && !a.admin_response && (React.createElement(AdminRespond, { onSave: (text) => respond(a.id, text) }))))),
+        turnActions.map(a => React.createElement(ActionCard, { key: a.id, a: a, highlight: true })),
         React.createElement("h3", { style: { fontFamily: 'var(--font-display)', fontSize: 17, marginBottom: 14, marginTop: 26 } }, "Hist\u00F3rico completo"),
         feed === null && React.createElement("p", { className: "loading" }, "Carregando..."),
         feed && feed.length === 0 && React.createElement("div", { className: "empty-state" }, "Nenhuma a\u00E7\u00E3o registrada ainda."),
-        feed && feed.map(a => (React.createElement("div", { className: "roll-card", key: a.id },
-            React.createElement("div", { className: "story-meta" },
-                React.createElement("span", null,
-                    "Turno ",
-                    a.turn,
-                    " \u00B7 ",
-                    a.character ? a.character.name : '—',
-                    " \u00B7 ",
-                    a.player ? a.player.display_name : ''),
-                React.createElement("span", null, new Date(a.created_at).toLocaleString('pt-BR'))),
-            React.createElement("p", { style: { fontSize: 14, marginBottom: 8 } }, a.action_text),
-            React.createElement("span", { className: "roll-result " + (a.success ? 'roll-success' : 'roll-fail'), style: { fontSize: 15, padding: '3px 10px' } },
-                a.roll,
-                " + ",
-                a.modifier,
-                " = ",
-                a.total,
-                " vs CD ",
-                a.dc,
-                " \u2014 ",
-                a.success ? 'SUCESSO' : 'FRACASSO'),
-            a.admin_response && React.createElement("p", { style: { marginTop: 10, fontSize: 13.5, color: 'var(--cyan)' } },
-                "Mestre: ",
-                a.admin_response),
-            isAdmin && !a.admin_response && (React.createElement(AdminRespond, { onSave: (text) => respond(a.id, text) })))))));
+        feed && feed.map(a => React.createElement(ActionCard, { key: a.id, a: a, highlight: false }))));
 }
 function AdminRespond({ onSave }) {
     const [text, setText] = useState('');
@@ -1154,6 +1328,7 @@ function App() {
     const [profile, setProfile] = useState(null);
     const [view, setView] = useState('home');
     const [toastMsg, showToast] = useToast();
+    const [actionLocation, setActionLocation] = useState(null);
     useEffect(() => {
         const saved = loadAppearance();
         applyAppearance(saved.theme, saved.font);
@@ -1195,8 +1370,8 @@ function App() {
         React.createElement("main", null,
             view === 'home' && React.createElement(HomeView, { profile: profile, toast: showToast }),
             view === 'characters' && React.createElement(CharactersView, { profile: profile, toast: showToast }),
-            view === 'map' && React.createElement(MapView, { profile: profile, toast: showToast }),
-            view === 'actions' && React.createElement(ActionsView, { profile: profile, toast: showToast }),
+            view === 'map' && React.createElement(MapView, { profile: profile, toast: showToast, goto: setView, setActionLocation: setActionLocation }),
+            view === 'actions' && React.createElement(ActionsView, { profile: profile, toast: showToast, actionLocation: actionLocation, clearActionLocation: () => setActionLocation(null) }),
             view === 'system' && profile.role === 'admin' && React.createElement(SystemView, { profile: profile, toast: showToast })),
         React.createElement("div", { className: "toast " + (toastMsg ? 'show' : '') }, toastMsg)));
 }
