@@ -200,6 +200,12 @@ label{ font-size:12px; color:var(--muted); text-transform:uppercase; letter-spac
 .map-point.current{ border-color:var(--gold); box-shadow:0 0 14px rgba(255,210,63,.5); }
 .map-point.selected{ outline:2px solid var(--cyan); }
 .map-point.creating{ border-color:var(--cyan); border-style:dashed; animation:none; opacity:.85; }
+.map-char-cluster{ position:absolute; transform:translate(-50%, 16px); display:flex; gap:4px; z-index:3; pointer-events:none; }
+.map-char-avatar{ width:24px; height:24px; border-radius:50%; border:2px solid var(--cyan); background:var(--panel-raised); overflow:hidden;
+  display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:700; color:var(--cyan); cursor:pointer;
+  pointer-events:auto; box-shadow:0 2px 8px rgba(0,0,0,.5); transition:transform .15s ease; }
+.map-char-avatar:hover{ transform:scale(1.25); z-index:4; }
+.map-char-avatar img{ width:100%; height:100%; object-fit:cover; }
 @keyframes pulse{ 0%{box-shadow:0 0 0 0 rgba(139,63,251,.5);} 70%{box-shadow:0 0 0 14px rgba(139,63,251,0);} 100%{box-shadow:0 0 0 0 rgba(139,63,251,0);} }
 .map-label{ position:absolute; top:32px; left:50%; transform:translateX(-50%); font-size:10.5px; white-space:nowrap; background:rgba(10,10,18,.85);
   padding:2px 7px; border-radius:6px; pointer-events:none; opacity:0; transition:opacity .2s ease; }
@@ -804,11 +810,17 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
                         React.createElement("button", { className: "btn-primary btn-sm", onClick: saveEdit }, "Salvar"),
                         React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => setEdit(false) }, "Cancelar")))))))));
 }
-function CharactersView({ profile, toast }) {
+function CharactersView({ profile, toast, initialOpenId, clearInitialOpenId }) {
     const [chars, setChars] = useState(null);
     const [openId, setOpenId] = useState(null);
     const [creating, setCreating] = useState(false);
     const [newName, setNewName] = useState('');
+    useEffect(() => {
+        if (initialOpenId) {
+            setOpenId(initialOpenId);
+            clearInitialOpenId();
+        }
+    }, [initialOpenId]);
     async function load() {
         const { data } = await supabase.from('characters').select('*').order('created_at');
         setChars(data || []);
@@ -865,7 +877,7 @@ const LOCATION_TYPES = {
     evento: { icon: '🧠', label: 'Evento' },
     corrompida: { icon: '☠️', label: 'Área Corrompida' },
 };
-function MapView({ profile, toast, goto, setActionLocation }) {
+function MapView({ profile, toast, goto, setActionLocation, openCharacter }) {
     const isAdmin = profile.role === 'admin';
     const [locations, setLocations] = useState([]);
     const [characters, setCharacters] = useState([]);
@@ -983,6 +995,12 @@ function MapView({ profile, toast, goto, setActionLocation }) {
                 locations.map(loc => (React.createElement("div", { key: loc.id, className: "map-point " + (settings && settings.current_location_id === loc.id ? 'current ' : '') + (selected && selected.id === loc.id ? 'selected' : ''), style: { left: loc.x + '%', top: loc.y + '%' }, onClick: (e) => { e.stopPropagation(); selectLocation(loc); } },
                     React.createElement("span", { className: "map-point-icon" }, (LOCATION_TYPES[loc.type] || LOCATION_TYPES.cidade).icon),
                     React.createElement("span", { className: "map-label" }, loc.name)))),
+                locations.map(loc => {
+                    const here = characters.filter(c => c.current_location_id === loc.id);
+                    if (here.length === 0)
+                        return null;
+                    return (React.createElement("div", { key: 'chars-' + loc.id, className: "map-char-cluster", style: { left: loc.x + '%', top: loc.y + '%' } }, here.map(c => (React.createElement("div", { key: c.id, className: "map-char-avatar", title: c.name, onClick: (e) => { e.stopPropagation(); openCharacter(c.id); } }, c.avatar_url ? React.createElement("img", { src: c.avatar_url, alt: c.name }) : React.createElement("span", null, initialsOf(c.name)))))));
+                }),
                 creatingAt && (React.createElement("div", { className: "map-point creating", style: { left: creatingAt.x + '%', top: creatingAt.y + '%' } },
                     React.createElement("span", { className: "map-point-icon" }, "\uD83D\uDCCD")))),
             React.createElement("div", { className: "map-info" },
@@ -1329,6 +1347,7 @@ function App() {
     const [view, setView] = useState('home');
     const [toastMsg, showToast] = useToast();
     const [actionLocation, setActionLocation] = useState(null);
+    const [openCharacterId, setOpenCharacterId] = useState(null);
     useEffect(() => {
         const saved = loadAppearance();
         applyAppearance(saved.theme, saved.font);
@@ -1369,8 +1388,8 @@ function App() {
         React.createElement(Nav, { view: view, setView: setView, profile: profile, onLogout: () => supabase.auth.signOut() }),
         React.createElement("main", null,
             view === 'home' && React.createElement(HomeView, { profile: profile, toast: showToast }),
-            view === 'characters' && React.createElement(CharactersView, { profile: profile, toast: showToast }),
-            view === 'map' && React.createElement(MapView, { profile: profile, toast: showToast, goto: setView, setActionLocation: setActionLocation }),
+            view === 'characters' && React.createElement(CharactersView, { profile: profile, toast: showToast, initialOpenId: openCharacterId, clearInitialOpenId: () => setOpenCharacterId(null) }),
+            view === 'map' && React.createElement(MapView, { profile: profile, toast: showToast, goto: setView, setActionLocation: setActionLocation, openCharacter: (id) => { setOpenCharacterId(id); setView('characters'); } }),
             view === 'actions' && React.createElement(ActionsView, { profile: profile, toast: showToast, actionLocation: actionLocation, clearActionLocation: () => setActionLocation(null) }),
             view === 'system' && profile.role === 'admin' && React.createElement(SystemView, { profile: profile, toast: showToast })),
         React.createElement("div", { className: "toast " + (toastMsg ? 'show' : '') }, toastMsg)));
