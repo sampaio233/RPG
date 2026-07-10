@@ -2141,8 +2141,17 @@ function ActionsView({ profile, toast, actionLocation, clearActionLocation }) {
             .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'actions' }, loadFeed)
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'settings' }, loadSettings)
             .subscribe();
-        // polling de segurança: garante que ações novas apareçam mesmo se o realtime falhar
-        const poll = setInterval(loadFeed, 3000);
+        // polling agressivo: 1s quando tem ação aguardando dado, 4s no geral
+        let pollInterval = 4000;
+        const poll = setInterval(() => {
+            loadFeed();
+            // se tiver alguma ação com DC definida mas sem dado, acelera
+            const hasPending = (feed || []).some(a => a.dc_set && a.roll == null);
+            const nextInterval = hasPending ? 1000 : 4000;
+            if (nextInterval !== pollInterval) {
+                pollInterval = nextInterval;
+            }
+        }, 1000); // sempre a cada 1s pra garantir
         return () => { supabase.removeChannel(ch); clearInterval(poll); };
     }, []);
     const currentTurn = settings ? settings.current_turn : 1;
