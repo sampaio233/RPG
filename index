@@ -990,6 +990,8 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
     const isAdmin = profile.role === 'admin';
     const canEdit = isAdmin;
     const [skills, setSkills] = useState([]);
+    const [addingSkill, setAddingSkill] = useState(false);
+    const [skillForm, setSkillForm] = useState({ name: '', description: '', level_required: 1, depth: 0 });
     const [edit, setEdit] = useState(false);
     const [form, setForm] = useState(Object.assign({}, char));
     const [profiles, setProfiles] = useState([]);
@@ -1193,6 +1195,25 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
         setSkills(s => s.map(x => x.id === skill.id ? Object.assign(Object.assign({}, x), { unlocked: true }) : x));
         onChanged();
     }
+    async function addSkill() {
+        if (!skillForm.name.trim()) {
+            toast('Digite o nome da habilidade.');
+            return;
+        }
+        const { error } = await supabase.from('skills').insert({
+            character_id: char.id, name: skillForm.name.trim(), description: skillForm.description,
+            level_required: +skillForm.level_required || 1, req_level: +skillForm.level_required || 1,
+            depth: +skillForm.depth || 0, unlocked: false,
+        });
+        if (error) {
+            toast('Erro: ' + error.message);
+            return;
+        }
+        toast('Habilidade adicionada!');
+        setAddingSkill(false);
+        setSkillForm({ name: '', description: '', level_required: 1, depth: 0 });
+        supabase.from('skills').select('*').eq('character_id', char.id).order('depth').then(({ data }) => setSkills(data || []));
+    }
     return (React.createElement("div", { className: "overlay open", onClick: e => { if (e.target.classList.contains('overlay'))
             onClose(); } },
         React.createElement("div", { className: "sheet" },
@@ -1353,14 +1374,38 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
             tab === 'ficha' && (React.createElement("div", { className: "tab-panel" },
                 React.createElement("div", { className: "stat-row" },
                     React.createElement("span", null, "N\u00EDvel"),
-                    React.createElement("b", null, char.level)),
-                React.createElement("div", { className: "stat-row" },
-                    React.createElement("span", null, "Experi\u00EAncia"),
-                    React.createElement("b", null,
-                        char.exp,
-                        "%")),
-                React.createElement("div", { className: "gauge" },
-                    React.createElement("div", { className: "gauge-fill gauge-exp", style: { width: char.exp + '%' } })),
+                    React.createElement("b", { style: { color: 'var(--gold)', fontSize: 18 } }, char.level)),
+                (function () {
+                    var level = char.level || 1;
+                    var expTotal = char.exp || 0;
+                    // EXP acumulada até o início do nível atual
+                    var expStart = 0;
+                    for (var l = 1; l < level; l++)
+                        expStart += l * 100;
+                    var expNeeded = level * 100; // EXP necessária pra subir deste nível
+                    var expInLevel = expTotal - expStart;
+                    var pct = Math.min(100, Math.round((expInLevel / expNeeded) * 100));
+                    return (React.createElement(React.Fragment, null,
+                        React.createElement("div", { className: "stat-row" },
+                            React.createElement("span", null, "EXP"),
+                            React.createElement("b", null,
+                                expInLevel,
+                                " / ",
+                                expNeeded,
+                                " ",
+                                React.createElement("span", { className: "muted", style: { fontSize: 12 } },
+                                    "(",
+                                    pct,
+                                    "% para o n\u00EDvel ",
+                                    level + 1,
+                                    ")"))),
+                        React.createElement("div", { className: "gauge" },
+                            React.createElement("div", { className: "gauge-fill gauge-exp", style: { width: pct + '%' } })),
+                        React.createElement("div", { className: "muted", style: { fontSize: 12, marginBottom: 12 } },
+                            "Total acumulado: ",
+                            expTotal,
+                            " EXP")));
+                })(),
                 React.createElement("div", { className: "grid2" },
                     React.createElement("div", null,
                         React.createElement("div", { className: "stat-row" },
@@ -1370,7 +1415,7 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
                                 "/",
                                 char.hp_max)),
                         React.createElement("div", { className: "gauge" },
-                            React.createElement("div", { className: "gauge-fill gauge-hp", style: { width: (100 * char.hp_current / char.hp_max) + '%' } }))),
+                            React.createElement("div", { className: "gauge-fill gauge-hp", style: { width: (100 * char.hp_current / Math.max(1, char.hp_max)) + '%' } }))),
                     React.createElement("div", null,
                         React.createElement("div", { className: "stat-row" },
                             React.createElement("span", null, "Energia"),
@@ -1379,7 +1424,7 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
                                 "/",
                                 char.mp_max)),
                         React.createElement("div", { className: "gauge" },
-                            React.createElement("div", { className: "gauge-fill gauge-mp", style: { width: (100 * char.mp_current / char.mp_max) + '%' } })))),
+                            React.createElement("div", { className: "gauge-fill gauge-mp", style: { width: (100 * char.mp_current / Math.max(1, char.mp_max)) + '%' } })))),
                 React.createElement("div", { className: "attr-grid" },
                     React.createElement("div", { className: "attr-box" },
                         React.createElement("div", { className: "attr-label" }, "For\u00E7a"),
@@ -1392,23 +1437,62 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
                         React.createElement("div", { className: "attr-value" }, char.inteligencia))),
                 React.createElement("p", { className: "muted", style: { fontSize: 13, marginBottom: 10 } },
                     "Pontos de habilidade dispon\u00EDveis: ",
-                    React.createElement("b", { style: { color: 'var(--gold)' } }, char.skill_points)),
-                isAdmin && (React.createElement("div", { className: "admin-box" },
-                    React.createElement("div", { className: "admin-box-title" }, "Progress\u00E3o (mestre)"),
-                    React.createElement("div", { style: { display: 'flex', gap: 10, flexWrap: 'wrap' } },
-                        React.createElement("button", { className: "btn-primary btn-sm", onClick: () => gainExp(10) }, "+10% EXP"),
-                        React.createElement("button", { className: "btn-primary btn-sm", onClick: () => gainExp(25) }, "+25% EXP")))))),
+                    React.createElement("b", { style: { color: 'var(--gold)' } }, char.skill_points)))),
             tab === 'habilidades' && (React.createElement("div", { className: "tab-panel" },
+                isAdmin && (React.createElement("div", { style: { marginBottom: 16 } },
+                    !addingSkill && React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => setAddingSkill(true) }, "+ Adicionar habilidade"),
+                    addingSkill && (React.createElement("div", { className: "admin-box" },
+                        React.createElement("div", { className: "admin-box-title" }, "Nova habilidade"),
+                        React.createElement("div", { className: "grid2" },
+                            React.createElement("div", { className: "field" },
+                                React.createElement("label", null, "Nome"),
+                                React.createElement("input", { value: skillForm.name, onChange: e => setSkillForm(Object.assign(Object.assign({}, skillForm), { name: e.target.value })), placeholder: "Ex: Golpe Rel\u00E2mpago" })),
+                            React.createElement("div", { className: "field" },
+                                React.createElement("label", null, "N\u00EDvel m\u00EDnimo para desbloquear"),
+                                React.createElement("input", { type: "number", min: "1", value: skillForm.level_required, onChange: e => setSkillForm(Object.assign(Object.assign({}, skillForm), { level_required: e.target.value })) }))),
+                        React.createElement("div", { className: "field" },
+                            React.createElement("label", null, "Descri\u00E7\u00E3o"),
+                            React.createElement("textarea", { rows: "2", value: skillForm.description, onChange: e => setSkillForm(Object.assign(Object.assign({}, skillForm), { description: e.target.value })), placeholder: "O que essa habilidade faz..." })),
+                        React.createElement("div", { style: { display: 'flex', gap: 10 } },
+                            React.createElement("button", { className: "btn-primary btn-sm", onClick: addSkill }, "Salvar"),
+                            React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => setAddingSkill(false) }, "Cancelar")))))),
                 skills.length === 0 && React.createElement("p", { className: "muted" }, "Nenhuma habilidade cadastrada para este personagem ainda."),
-                skills.map(s => (React.createElement("div", { key: s.id, className: "skill-node " + (s.unlocked ? 'unlocked' : 'locked'), style: { '--depth': s.depth } },
-                    React.createElement("div", { className: "skill-icon" }, s.unlocked ? '★' : '☆'),
-                    React.createElement("div", { className: "skill-body" },
-                        React.createElement("div", { className: "skill-name" }, s.name),
-                        React.createElement("div", { className: "skill-req" },
-                            "Requer n\u00EDvel ",
-                            s.req_level),
-                        React.createElement("div", { className: "skill-desc" }, s.desc || s.description)),
-                    !s.unlocked && (isOwner || isAdmin) && char.level >= s.req_level && char.skill_points > 0 && (React.createElement("button", { className: "btn-primary btn-sm", onClick: () => unlockSkill(s) }, "Desbloquear"))))))),
+                skills.map(s => {
+                    const locked = !s.unlocked;
+                    const levelOk = char.level >= (s.level_required || s.req_level || 1);
+                    return (React.createElement("div", { key: s.id, className: "skill-node " + (s.unlocked ? 'unlocked' : 'locked'), style: { '--depth': s.depth } },
+                        s.image_url
+                            ? React.createElement("img", { src: s.image_url, alt: s.name, style: { width: 42, height: 42, borderRadius: 8, objectFit: 'cover', flexShrink: 0, opacity: locked ? 0.45 : 1 } })
+                            : React.createElement("div", { className: "skill-icon" }, s.unlocked ? '★' : '☆'),
+                        React.createElement("div", { className: "skill-body" },
+                            React.createElement("div", { className: "skill-name" }, s.name),
+                            React.createElement("div", { className: "skill-req" },
+                                "N\u00EDvel ",
+                                s.level_required || s.req_level || 1,
+                                " necess\u00E1rio",
+                                locked && !levelOk && React.createElement("span", { style: { color: 'var(--magenta)', marginLeft: 6 } }, "\u00B7 N\u00EDvel insuficiente"),
+                                locked && levelOk && React.createElement("span", { style: { color: 'var(--gold)', marginLeft: 6 } }, "\u00B7 Pronto para desbloquear!")),
+                            React.createElement("div", { className: "skill-desc" }, s.desc || s.description)),
+                        React.createElement("div", { style: { display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' } },
+                            locked && (isOwner || isAdmin) && levelOk && char.skill_points > 0 && (React.createElement("button", { className: "btn-primary btn-sm", onClick: () => unlockSkill(s) }, "Desbloquear")),
+                            isAdmin && (React.createElement("label", { style: { cursor: 'pointer', fontSize: 11, color: 'var(--muted)', padding: '2px 6px', border: '1px solid var(--border)', borderRadius: 6 } },
+                                "\uD83D\uDCF7 Foto",
+                                React.createElement("input", { type: "file", accept: "image/*", style: { display: 'none' }, onChange: async (e) => {
+                                        const file = e.target.files[0];
+                                        if (!file)
+                                            return;
+                                        const path = 'skills/' + s.id + '_' + Date.now() + '_' + sanitizeFileName(file.name);
+                                        const { error: upErr } = await supabase.storage.from('avatars').upload(path, file, { upsert: true });
+                                        if (upErr) {
+                                            toast('Erro no upload: ' + upErr.message);
+                                            return;
+                                        }
+                                        const { data: ud } = supabase.storage.from('avatars').getPublicUrl(path);
+                                        await supabase.from('skills').update({ image_url: ud.publicUrl }).eq('id', s.id);
+                                        toast('Foto da habilidade salva!');
+                                        supabase.from('skills').select('*').eq('character_id', char.id).order('depth').then(({ data }) => setSkills(data || []));
+                                    } }))))));
+                }))),
             tab === 'inventario' && (React.createElement("div", { className: "tab-panel" },
                 React.createElement("p", { style: { marginBottom: 14, fontSize: 15 } },
                     "\uD83D\uDCB0 Moedas: ",
@@ -1422,15 +1506,7 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
                             " \u00D7 ",
                             inv.quantity),
                         React.createElement("div", { className: "skill-req" }, inv.item.description)),
-                    inv.item.type === 'pocao' && (isOwner || isAdmin) && (React.createElement("button", { className: "btn-primary btn-sm", onClick: () => useItem(inv.item.id) }, "Usar"))))),
-                purchaseRequests.filter(p => p.status === 'pendente').length > 0 && (React.createElement(React.Fragment, null,
-                    React.createElement("div", { className: "attr-label", style: { marginTop: 16, marginBottom: 8 } }, "Pedidos de compra pendentes"),
-                    purchaseRequests.filter(p => p.status === 'pendente').map(p => (React.createElement("div", { key: p.id, style: { fontSize: 13, color: 'var(--gold)', marginBottom: 6 } },
-                        "\u23F3 ",
-                        p.item ? p.item.name : 'item',
-                        " \u2014 \uD83D\uDCB0",
-                        p.price,
-                        " (aguardando o mestre)"))))))),
+                    inv.item.type === 'pocao' && (isOwner || isAdmin) && (React.createElement("button", { className: "btn-primary btn-sm", onClick: () => useItem(inv.item.id) }, "Usar"))))))),
             tab === 'historico' && (React.createElement("div", { className: "tab-panel" },
                 actionHistory.length === 0 && React.createElement("p", { className: "muted" }, "Nenhuma a\u00E7\u00E3o registrada ainda para este personagem."),
                 actionHistory.map(a => (React.createElement("div", { key: a.id, className: "roll-card" },
@@ -1802,17 +1878,22 @@ function MapView({ profile, toast, goto, setActionLocation, openCharacter }) {
         toast('Item removido.');
         loadShop(selected.id);
     }
-    async function buyItem(itemId) {
+    async function buyItem(itemId, price) {
         if (!myChar) {
             toast('Você precisa ter um personagem aprovado para comprar.');
             return;
         }
-        const { error } = await supabase.rpc('request_purchase', { p_character_id: myChar.id, p_item_id: itemId });
+        if (myChar.coins < price) {
+            toast('Moedas insuficientes! Você tem ' + myChar.coins + ' moedas.');
+            return;
+        }
+        const { error } = await supabase.rpc('buy_item', { p_character_id: myChar.id, p_item_id: itemId });
         if (error) {
             toast('Erro: ' + error.message);
             return;
         }
-        toast('Pedido de compra enviado! Aguardando aprovação do mestre.');
+        toast('Comprado! -' + price + ' moedas.');
+        load();
     }
     async function uploadLocationImage(e) {
         const file = e.target.files[0];
@@ -2051,7 +2132,7 @@ function MapView({ profile, toast, goto, setActionLocation, openCharacter }) {
                                 React.createElement("span", { style: { fontSize: 13, color: 'var(--gold)' } },
                                     "\uD83D\uDCB0",
                                     it.price),
-                                !isAdmin && isHereNow && React.createElement("button", { className: "btn-primary btn-sm", onClick: () => buyItem(it.id) }, "Pedir compra"),
+                                !isAdmin && isHereNow && React.createElement("button", { className: "btn-primary btn-sm", onClick: () => buyItem(it.id, it.price) }, "\uD83D\uDCB0 Comprar"),
                                 isAdmin && React.createElement("button", { className: "btn-danger", onClick: () => removeShopItem(it.id) }, "\u2715"))))),
                         isAdmin && !addingItem && React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => setAddingItem(true) }, "+ Adicionar item \u00E0 loja"),
                         isAdmin && addingItem && (React.createElement("div", { style: { marginTop: 8 } },
@@ -2214,13 +2295,22 @@ function ActionsView({ profile, toast, actionLocation, clearActionLocation }) {
         const modifier = attrModifier(attrVal);
         const total = dieRoll + modifier;
         const success = total >= action.dc;
+        // tenta o UPDATE
         const { error } = await supabase
             .from('actions')
             .update({ roll: dieRoll, modifier: modifier, total: total, success: success, status: 'pendente' })
             .eq('id', action.id);
-        setRolling(false);
         if (error) {
+            setRolling(false);
             toast('Erro ao rolar: ' + error.message);
+            return;
+        }
+        // confirma lendo de volta do banco
+        const { data: check } = await supabase.from('actions').select('roll,modifier,total,success').eq('id', action.id).maybeSingle();
+        setRolling(false);
+        if (!check || check.roll == null) {
+            // colunas ainda têm NOT NULL — tenta drop constraint na hora
+            toast('Erro: resultado não salvo. Peça ao mestre para rodar o SQL de correção.');
             return;
         }
         setLastRoll({ dieRoll, modifier, total, dc: action.dc, success });
@@ -2232,20 +2322,48 @@ function ActionsView({ profile, toast, actionLocation, clearActionLocation }) {
         toast('Resposta salva.');
         loadFeed();
     }
-    async function setStatus(actionId, status, characterId) {
-        await supabase.from('actions').update({ status }).eq('id', actionId);
-        if (status === 'aprovada' && characterId) {
-            const reward = prompt('Moedas de recompensa? (0 pra nenhuma)', '10');
-            const amount = parseInt(reward, 10);
-            if (amount > 0) {
-                const { data: c } = await supabase.from('characters').select('coins').eq('id', characterId).single();
-                await supabase.from('characters').update({ coins: (c ? c.coins : 0) + amount }).eq('id', characterId);
-                toast('Ação aprovada! +' + amount + ' moedas.');
-                loadFeed();
-                return;
+    const [resolving, setResolving] = useState(null);
+    function startResolve(actionId, characterId, type) {
+        setResolving({ actionId, characterId, type, coins: type === 'aprovada' ? '10' : '0', damage: type === 'rejeitada' ? '10' : '0', exp: type === 'aprovada' ? '20' : '0' });
+    }
+    async function confirmResolve() {
+        if (!resolving)
+            return;
+        const { actionId, characterId, type, coins, damage, exp } = resolving;
+        await supabase.from('actions').update({ status: type }).eq('id', actionId);
+        const coinAmt = parseInt(coins) || 0;
+        const dmgAmt = parseInt(damage) || 0;
+        const expAmt = parseInt(exp) || 0;
+        if (characterId && (coinAmt > 0 || dmgAmt > 0 || expAmt > 0)) {
+            const { data: c } = await supabase.from('characters').select('coins,hp_current,hp_max,exp,level').eq('id', characterId).single();
+            if (c) {
+                const updates = {};
+                if (coinAmt > 0)
+                    updates.coins = (c.coins || 0) + coinAmt;
+                if (dmgAmt > 0)
+                    updates.hp_current = Math.max(0, (c.hp_current || 0) - dmgAmt);
+                if (expAmt > 0) {
+                    const newExp = (c.exp || 0) + expAmt;
+                    // fórmula: nível sobe a cada 100*nivel EXP acumulada
+                    let newLevel = c.level || 1;
+                    while (newExp >= newLevel * 100)
+                        newLevel++;
+                    updates.exp = newExp;
+                    if (newLevel > (c.level || 1))
+                        updates.level = newLevel;
+                }
+                await supabase.from('characters').update(updates).eq('id', characterId);
             }
         }
-        toast(status === 'aprovada' ? 'Ação aprovada.' : 'Ação rejeitada.');
+        const msgs = [];
+        if (type === 'aprovada' && coinAmt > 0)
+            msgs.push('+' + coinAmt + ' moedas');
+        if (expAmt > 0)
+            msgs.push('+' + expAmt + ' EXP');
+        if (dmgAmt > 0)
+            msgs.push('-' + dmgAmt + ' HP');
+        toast(type === 'aprovada' ? '✓ Aprovada' + (msgs.length ? ' · ' + msgs.join(', ') : '') + '!' : '✕ Rejeitada' + (msgs.length ? ' · ' + msgs.join(', ') : '') + '.');
+        setResolving(null);
         loadFeed();
     }
     const [confirmDelete, setConfirmDelete] = useState(null); // actionId sendo confirmado
@@ -2321,9 +2439,26 @@ function ActionsView({ profile, toast, actionLocation, clearActionLocation }) {
             a.admin_response && React.createElement("p", { style: { marginTop: 10, fontSize: 13.5, color: 'var(--cyan)' } },
                 "Mestre: ",
                 a.admin_response),
-            isAdmin && rolled && (React.createElement("div", { style: { display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' } },
-                (a.status || 'pendente') !== 'aprovada' && React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => setStatus(a.id, 'aprovada', a.character_id) }, "\u2713 Aprovar"),
-                (a.status || 'pendente') !== 'rejeitada' && React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => setStatus(a.id, 'rejeitada', a.character_id) }, "\u2715 Rejeitar"))),
+            isAdmin && rolled && resolving && resolving.actionId === a.id && (React.createElement("div", { className: "admin-box", style: { marginTop: 12 } },
+                React.createElement("div", { className: "admin-box-title" }, resolving.type === 'aprovada' ? '✓ Aprovar ação' : '✕ Rejeitar ação'),
+                React.createElement("div", { style: { display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 8 } },
+                    resolving.type === 'aprovada' && (React.createElement("div", { className: "field", style: { marginBottom: 0 } },
+                        React.createElement("label", null, "\uD83D\uDCB0 Moedas"),
+                        React.createElement("input", { type: "number", min: "0", style: { width: 80 }, value: resolving.coins, onChange: e => setResolving(Object.assign(Object.assign({}, resolving), { coins: e.target.value })) }))),
+                    resolving.type === 'aprovada' && (React.createElement("div", { className: "field", style: { marginBottom: 0 } },
+                        React.createElement("label", null, "\u2B50 EXP"),
+                        React.createElement("input", { type: "number", min: "0", style: { width: 80 }, value: resolving.exp, onChange: e => setResolving(Object.assign(Object.assign({}, resolving), { exp: e.target.value })) }))),
+                    React.createElement("div", { className: "field", style: { marginBottom: 0 } },
+                        React.createElement("label", null,
+                            "\uD83D\uDC94 Dano HP ",
+                            resolving.type === 'aprovada' ? '(opcional)' : ''),
+                        React.createElement("input", { type: "number", min: "0", style: { width: 80 }, value: resolving.damage, onChange: e => setResolving(Object.assign(Object.assign({}, resolving), { damage: e.target.value })) })),
+                    React.createElement("div", { style: { display: 'flex', gap: 8 } },
+                        React.createElement("button", { className: "btn-primary btn-sm", onClick: confirmResolve }, "Confirmar"),
+                        React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => setResolving(null) }, "Cancelar"))))),
+            isAdmin && rolled && !resolving && (React.createElement("div", { style: { display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' } },
+                (a.status || 'pendente') !== 'aprovada' && React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => startResolve(a.id, a.character_id, 'aprovada') }, "\u2713 Aprovar"),
+                (a.status || 'pendente') !== 'rejeitada' && React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => startResolve(a.id, a.character_id, 'rejeitada') }, "\u2715 Rejeitar + dano"))),
             isAdmin && rolled && !a.admin_response && React.createElement(AdminRespond, { onSave: (text) => respond(a.id, text) })));
     }
     return (React.createElement("section", null,
@@ -2483,19 +2618,6 @@ function SystemView({ profile, toast }) {
         React.createElement("h2", { className: "section-title" },
             React.createElement("span", { className: "tag" }, "05"),
             " Painel do Mestre"),
-        purchaseRequests.length > 0 && (React.createElement(React.Fragment, null,
-            React.createElement("h3", { style: { fontFamily: 'var(--font-display)', fontSize: 16, marginBottom: 12 } }, "Compras pendentes"),
-            React.createElement("div", { style: { marginBottom: 28 } }, purchaseRequests.map(pr => (React.createElement("div", { key: pr.id, className: "roll-card", style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 } },
-                React.createElement("div", { style: { fontSize: 14 } },
-                    React.createElement("b", null, pr.character ? pr.character.name : '—'),
-                    " quer comprar ",
-                    React.createElement("b", null, pr.item ? pr.item.name : '—'),
-                    React.createElement("span", { style: { color: 'var(--gold)', marginLeft: 8 } },
-                        "\uD83D\uDCB0",
-                        pr.price)),
-                React.createElement("div", { style: { display: 'flex', gap: 8 } },
-                    React.createElement("button", { className: "btn-primary btn-sm", onClick: () => resolvePurchase(pr.id, true) }, "\u2713 Aprovar"),
-                    React.createElement("button", { className: "btn-danger", onClick: () => resolvePurchase(pr.id, false) }, "\u2715 Recusar")))))))),
         React.createElement("h3", { style: { fontFamily: 'var(--font-display)', fontSize: 16, marginBottom: 12 } }, "Dificuldade padr\u00E3o dos testes"),
         React.createElement("div", { style: { display: 'flex', gap: 10, alignItems: 'center', marginBottom: 28 } },
             React.createElement("input", { type: "number", style: { width: 90 }, defaultValue: settings ? settings.default_dc : 13, onBlur: e => saveDc(+e.target.value) }),
