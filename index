@@ -2201,25 +2201,39 @@ function ActionsView({ profile, toast, actionLocation, clearActionLocation }) {
             toast('Você já rolou o dado para esta ação.');
             return;
         }
-        const char = myChars.find(c => c.id === charId);
-        if (!char)
+        if (rolling)
             return;
+        const char = myChars.find(c => c.id === charId);
+        if (!char) {
+            toast('Personagem não encontrado.');
+            return;
+        }
         setRolling(true);
         const dieRoll = Math.floor(Math.random() * 20) + 1;
-        const modifier = attrModifier(char[action.attribute] || char['forca']);
+        const attrVal = char[action.attribute] || char['forca'] || 10;
+        const modifier = attrModifier(attrVal);
         const total = dieRoll + modifier;
         const success = total >= action.dc;
-        const { error } = await supabase.from('actions').update({
-            roll: dieRoll, modifier, total, success, status: 'pendente',
-        }).eq('id', action.id);
+        const { data: updated, error } = await supabase
+            .from('actions')
+            .update({ roll: dieRoll, modifier: modifier, total: total, success: success, status: 'pendente' })
+            .eq('id', action.id)
+            .select()
+            .single();
         setRolling(false);
         if (error) {
-            toast('Erro: ' + error.message);
+            toast('Erro ao rolar: ' + error.message);
+            return;
+        }
+        // confirma que salvou
+        if (!updated || updated.roll == null) {
+            toast('Erro: dado não salvo, tente de novo.');
             return;
         }
         setLastRoll({ dieRoll, modifier, total, dc: action.dc, success });
-        toast(success ? '🎲 ' + total + ' — Sucesso!' : '🎲 ' + total + ' — Fracasso...');
-        loadFeed(); // força reload imediato pra mestre ver na hora
+        toast(success ? '🎲 ' + total + ' — SUCESSO!' : '🎲 ' + total + ' — Fracasso...');
+        // força reload imediato em ambas as telas
+        await loadFeed();
     }
     async function respond(actionId, text) {
         await supabase.from('actions').update({ admin_response: text }).eq('id', actionId);
@@ -2286,19 +2300,21 @@ function ActionsView({ profile, toast, actionLocation, clearActionLocation }) {
                     React.createElement("input", { type: "number", min: "1", max: "30", style: { width: 80 }, value: dcVal, onChange: e => setDcInputs(Object.assign(Object.assign({}, dcInputs), { [a.id]: e.target.value })), placeholder: "CD" }),
                     React.createElement("button", { className: "btn-primary btn-sm", onClick: () => setDc(a.id) }, "Definir CD e liberar dado")))),
             !isAdmin && waitingForDC && (React.createElement("div", { style: { marginTop: 10, fontSize: 13, color: 'var(--gold)' } }, "\u23F3 Aguardando o mestre definir a dificuldade...")),
-            waitingForRoll && isMyAction && !isAdmin && (React.createElement("div", { style: { marginTop: 12 } },
+            waitingForRoll && isMyAction && !isAdmin && !rolling && (React.createElement("div", { style: { marginTop: 12 } },
                 React.createElement("p", { style: { fontSize: 13, color: 'var(--cyan)', marginBottom: 8 } },
                     "\uD83C\uDFB2 CD ",
                     a.dc,
                     " definida! Hora de rolar o dado."),
-                React.createElement("button", { className: "btn-primary btn-sm", onClick: () => roll(a), disabled: rolling }, rolling ? '🎲 Rolando...' : 'Rolar d20 →'),
+                React.createElement("button", { className: "btn-primary btn-sm", onClick: () => roll(a) }, "Rolar d20 \u2192"),
                 React.createElement("p", { className: "muted", style: { fontSize: 11, marginTop: 6 } }, "Voc\u00EA s\u00F3 pode rolar uma vez."))),
-            waitingForRoll && !isMyAction && (React.createElement("div", { style: { marginTop: 10, fontSize: 13, color: 'var(--cyan)' } },
-                "\u2699\uFE0F CD ",
+            rolling && isMyAction && !isAdmin && (React.createElement("div", { style: { marginTop: 12, fontSize: 13, color: 'var(--cyan)' } }, "\uD83C\uDFB2 Rolando...")),
+            waitingForRoll && (isAdmin || !isMyAction) && (React.createElement("div", { style: { marginTop: 10, fontSize: 13, color: 'var(--cyan)' } },
+                "\u23F3 CD ",
                 a.dc,
-                " definida \u2014 aguardando jogador rolar o dado.")),
+                " definida \u2014 aguardando jogador rolar.")),
             rolled && (React.createElement("div", { style: { marginTop: 10 } },
                 React.createElement("span", { className: "roll-result " + (a.success ? 'roll-success' : 'roll-fail'), style: { fontSize: 15 } },
+                    "\uD83C\uDFB2 ",
                     a.roll,
                     " + ",
                     a.modifier,
@@ -2307,7 +2323,8 @@ function ActionsView({ profile, toast, actionLocation, clearActionLocation }) {
                     " vs CD ",
                     a.dc,
                     " \u2014 ",
-                    a.success ? 'SUCESSO' : 'FRACASSO'),
+                    a.success ? 'SUCESSO!' : 'FRACASSO'),
+                '  ',
                 React.createElement(StatusPill, { status: a.status || 'pendente' }))),
             a.admin_response && React.createElement("p", { style: { marginTop: 10, fontSize: 13.5, color: 'var(--cyan)' } },
                 "Mestre: ",
