@@ -687,7 +687,7 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
     const [purchaseRequests, setPurchaseRequests] = useState([]);
     const [originStory, setOriginStory] = useState(char.origin_story || '');
     const [ownerEdit, setOwnerEdit] = useState(false);
-    const [ownerForm, setOwnerForm] = useState({ name: char.name, appearance: char.appearance || '', bio_public: char.bio_public || '' });
+    const [ownerForm, setOwnerForm] = useState({ name: char.name, appearance: char.appearance || '', bio_public: char.bio_public || '', class_id: char.class_id || '', current_location_id: char.current_location_id || '', origin_story: char.origin_story || '' });
     const fileRef = useRef(null);
     useEffect(() => {
         supabase.from('skills').select('*').eq('character_id', char.id).order('depth').then(({ data }) => setSkills(data || []));
@@ -754,15 +754,31 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
         onChanged();
     }
     async function saveOwnerEdit() {
-        const { error } = await supabase.from('characters').update({
-            name: ownerForm.name.trim(), appearance: ownerForm.appearance, bio_public: ownerForm.bio_public,
-        }).eq('id', char.id);
+        const payload = { name: ownerForm.name.trim(), appearance: ownerForm.appearance, bio_public: ownerForm.bio_public };
+        if (char.status !== 'aprovado') {
+            payload.class_id = ownerForm.class_id || null;
+            payload.current_location_id = ownerForm.current_location_id || null;
+            payload.origin_story = ownerForm.origin_story;
+        }
+        const { error } = await supabase.from('characters').update(payload).eq('id', char.id);
         if (error) {
             toast('Erro: ' + error.message);
             return;
         }
         toast('Alterações enviadas para aprovação do mestre.');
         setOwnerEdit(false);
+        onChanged();
+    }
+    async function cancelCharacter() {
+        if (!confirm('Cancelar e excluir ' + char.name + ' de vez? Essa ação não pode ser desfeita.'))
+            return;
+        const { error } = await supabase.from('characters').delete().eq('id', char.id);
+        if (error) {
+            toast('Erro: ' + error.message);
+            return;
+        }
+        toast('Personagem cancelado.');
+        onClose();
         onChanged();
     }
     async function killCharacter() {
@@ -929,7 +945,7 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
                         locations.map(l => React.createElement("option", { key: l.id, value: l.id }, l.name))))),
                 isOwner && !isAdmin && (React.createElement("div", { className: "admin-box" },
                     React.createElement("div", { className: "admin-box-title" }, "Editar meu personagem"),
-                    !ownerEdit && React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => { setOwnerForm({ name: char.name, appearance: char.appearance || '', bio_public: char.bio_public || '' }); setOwnerEdit(true); } }, "Editar"),
+                    !ownerEdit && React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => { setOwnerForm({ name: char.name, appearance: char.appearance || '', bio_public: char.bio_public || '', class_id: char.class_id || '', current_location_id: char.current_location_id || '', origin_story: char.origin_story || '' }); setOwnerEdit(true); } }, "Editar"),
                     ownerEdit && (React.createElement("div", null,
                         React.createElement("div", { className: "field" },
                             React.createElement("label", null, "Nome"),
@@ -940,10 +956,28 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
                         React.createElement("div", { className: "field" },
                             React.createElement("label", null, "Biografia p\u00FAblica"),
                             React.createElement("textarea", { rows: "3", value: ownerForm.bio_public, onChange: e => setOwnerForm(Object.assign(Object.assign({}, ownerForm), { bio_public: e.target.value })) })),
+                        char.status !== 'aprovado' && (React.createElement(React.Fragment, null,
+                            React.createElement("div", { className: "field" },
+                                React.createElement("label", null, "Classe inicial"),
+                                React.createElement("select", { value: ownerForm.class_id, onChange: e => setOwnerForm(Object.assign(Object.assign({}, ownerForm), { class_id: e.target.value })) },
+                                    React.createElement("option", { value: "" }, "\u2014 escolher depois com o mestre \u2014"),
+                                    classes.filter(c => !c.evolves_from_id).map(c => React.createElement("option", { key: c.id, value: c.id },
+                                        c.icon,
+                                        " ",
+                                        c.name)))),
+                            React.createElement("div", { className: "field" },
+                                React.createElement("label", null, "Onde ele nasceu"),
+                                React.createElement("select", { value: ownerForm.current_location_id, onChange: e => setOwnerForm(Object.assign(Object.assign({}, ownerForm), { current_location_id: e.target.value })) },
+                                    React.createElement("option", { value: "" }, "\u2014 escolher depois com o mestre \u2014"),
+                                    locations.map(l => React.createElement("option", { key: l.id, value: l.id }, l.name)))),
+                            React.createElement("div", { className: "field" },
+                                React.createElement("label", null, "Hist\u00F3ria de origem"),
+                                React.createElement("textarea", { rows: "3", value: ownerForm.origin_story, onChange: e => setOwnerForm(Object.assign(Object.assign({}, ownerForm), { origin_story: e.target.value })) })))),
                         React.createElement("p", { className: "muted", style: { fontSize: 12, marginBottom: 10 } }, "Suas altera\u00E7\u00F5es v\u00E3o passar pela aprova\u00E7\u00E3o do mestre de novo antes de aparecer pros outros."),
                         React.createElement("div", { style: { display: 'flex', gap: 10 } },
                             React.createElement("button", { className: "btn-primary btn-sm", onClick: saveOwnerEdit }, "Salvar e enviar"),
-                            React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => setOwnerEdit(false) }, "Cancelar")))))),
+                            React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => setOwnerEdit(false) }, "Cancelar edi\u00E7\u00E3o")))),
+                    char.status !== 'aprovado' && !ownerEdit && (React.createElement("button", { className: "btn-danger", style: { marginTop: 10 }, onClick: cancelCharacter }, "\uD83D\uDDD1\uFE0F Cancelar e excluir este personagem")))),
                 isAdmin && (React.createElement("div", { className: "admin-box" },
                     React.createElement("div", { className: "admin-box-title" }, "Notas do mestre (s\u00F3 admin v\u00EA)"),
                     React.createElement("textarea", { rows: "3", defaultValue: char.admin_notes || '', onBlur: async (e) => {
