@@ -685,6 +685,8 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
     const [classes, setClasses] = useState([]);
     const [inventory, setInventory] = useState([]);
     const [originStory, setOriginStory] = useState(char.origin_story || '');
+    const [ownerEdit, setOwnerEdit] = useState(false);
+    const [ownerForm, setOwnerForm] = useState({ name: char.name, appearance: char.appearance || '', bio_public: char.bio_public || '' });
     const fileRef = useRef(null);
     useEffect(() => {
         supabase.from('skills').select('*').eq('character_id', char.id).order('depth').then(({ data }) => setSkills(data || []));
@@ -726,12 +728,35 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
     async function approveCharacter() {
         const { error } = await supabase.from('characters').update({
             status: 'aprovado', origin_story: originStory, current_location_id: form.current_location_id || char.current_location_id,
+            rejection_reason: null,
         }).eq('id', char.id);
         if (error) {
             toast('Erro: ' + error.message);
             return;
         }
         toast(char.name + ' foi aprovado!');
+        onChanged();
+    }
+    async function rejectCharacter() {
+        const reason = prompt('Motivo da recusa (opcional, o jogador vai ver):', '');
+        const { error } = await supabase.from('characters').update({ status: 'rejeitado', rejection_reason: reason || null }).eq('id', char.id);
+        if (error) {
+            toast('Erro: ' + error.message);
+            return;
+        }
+        toast(char.name + ' foi negado.');
+        onChanged();
+    }
+    async function saveOwnerEdit() {
+        const { error } = await supabase.from('characters').update({
+            name: ownerForm.name.trim(), appearance: ownerForm.appearance, bio_public: ownerForm.bio_public,
+        }).eq('id', char.id);
+        if (error) {
+            toast('Erro: ' + error.message);
+            return;
+        }
+        toast('Alterações enviadas para aprovação do mestre.');
+        setOwnerEdit(false);
         onChanged();
     }
     async function killCharacter() {
@@ -831,11 +856,15 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
                         React.createElement("div", { className: "sheet-power" },
                             classes.find(c => c.id === char.class_id) ? (classes.find(c => c.id === char.class_id).icon + ' ' + classes.find(c => c.id === char.class_id).name + ' · ') : '',
                             char.power))),
-                isAdmin && (React.createElement("button", { className: "btn-primary btn-sm sheet-hero-upload", onClick: () => fileRef.current.click() }, char.avatar_url ? '🖼️ Trocar foto' : '🖼️ Adicionar foto do personagem')),
+                (isAdmin || isOwner) && (React.createElement("button", { className: "btn-primary btn-sm sheet-hero-upload", onClick: () => fileRef.current.click() }, char.avatar_url ? '🖼️ Trocar foto' : '🖼️ Adicionar foto do personagem')),
                 React.createElement("input", { type: "file", accept: "image/*", ref: fileRef, style: { display: 'none' }, onChange: uploadAvatar })),
             char.status === 'pendente_aprovacao' && !isAdmin && (React.createElement("div", { className: "empty-state", style: { marginBottom: 16, borderColor: 'var(--gold)', color: 'var(--gold)' } }, "\u23F3 Aguardando aprova\u00E7\u00E3o do mestre.")),
-            char.status === 'pendente_aprovacao' && isAdmin && (React.createElement("div", { className: "admin-box", style: { marginBottom: 16 } },
-                React.createElement("div", { className: "admin-box-title" }, "\u23F3 Aprovar personagem novo"),
+            char.status === 'rejeitado' && !isAdmin && (React.createElement("div", { className: "empty-state", style: { marginBottom: 16, borderColor: 'var(--magenta)', color: 'var(--magenta)' } },
+                "\u274C Seu personagem foi recusado pelo mestre.",
+                char.rejection_reason ? ' Motivo: "' + char.rejection_reason + '"' : '',
+                " Edite e envie de novo na aba Sobre.")),
+            (char.status === 'pendente_aprovacao' || char.status === 'rejeitado') && isAdmin && (React.createElement("div", { className: "admin-box", style: { marginBottom: 16 } },
+                React.createElement("div", { className: "admin-box-title" }, char.status === 'rejeitado' ? '❌ Recusado — revisar de novo?' : '⏳ Aprovar personagem novo'),
                 React.createElement("div", { className: "field" },
                     React.createElement("label", null, "Classe"),
                     React.createElement("select", { value: form.class_id || '', onChange: e => setForm(Object.assign(Object.assign({}, form), { class_id: e.target.value })) },
@@ -852,7 +881,9 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
                 React.createElement("div", { className: "field" },
                     React.createElement("label", null, "Hist\u00F3ria de origem"),
                     React.createElement("textarea", { rows: "4", value: originStory, onChange: e => setOriginStory(e.target.value), placeholder: "Escreva de onde esse personagem vem, como surgiu..." })),
-                React.createElement("button", { className: "btn-primary btn-sm", onClick: approveCharacter }, "\u2713 Aprovar personagem"))),
+                React.createElement("div", { style: { display: 'flex', gap: 10 } },
+                    React.createElement("button", { className: "btn-primary btn-sm", onClick: approveCharacter }, "\u2713 Aprovar personagem"),
+                    React.createElement("button", { className: "btn-danger", onClick: rejectCharacter }, "\u2715 Negar")))),
             char.status === 'aprovado' && (isOwner || isAdmin) && classes.filter(c => c.evolves_from_id === char.class_id && char.level >= c.req_level).length > 0 && (React.createElement("div", { className: "admin-box", style: { marginBottom: 16, borderColor: 'var(--gold)' } },
                 React.createElement("div", { className: "admin-box-title", style: { color: 'var(--gold)' } }, "\u2728 Evolu\u00E7\u00E3o dispon\u00EDvel!"),
                 React.createElement("p", { style: { fontSize: 13, marginBottom: 10 } },
@@ -890,6 +921,23 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
                     React.createElement("select", { defaultValue: char.current_location_id || '', onChange: e => moveToLocation(e.target.value) },
                         React.createElement("option", { value: "" }, "\u2014 nenhum \u2014"),
                         locations.map(l => React.createElement("option", { key: l.id, value: l.id }, l.name))))),
+                isOwner && !isAdmin && (React.createElement("div", { className: "admin-box" },
+                    React.createElement("div", { className: "admin-box-title" }, "Editar meu personagem"),
+                    !ownerEdit && React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => { setOwnerForm({ name: char.name, appearance: char.appearance || '', bio_public: char.bio_public || '' }); setOwnerEdit(true); } }, "Editar"),
+                    ownerEdit && (React.createElement("div", null,
+                        React.createElement("div", { className: "field" },
+                            React.createElement("label", null, "Nome"),
+                            React.createElement("input", { value: ownerForm.name, onChange: e => setOwnerForm(Object.assign(Object.assign({}, ownerForm), { name: e.target.value })) })),
+                        React.createElement("div", { className: "field" },
+                            React.createElement("label", null, "Apar\u00EAncia"),
+                            React.createElement("textarea", { rows: "2", value: ownerForm.appearance, onChange: e => setOwnerForm(Object.assign(Object.assign({}, ownerForm), { appearance: e.target.value })) })),
+                        React.createElement("div", { className: "field" },
+                            React.createElement("label", null, "Biografia p\u00FAblica"),
+                            React.createElement("textarea", { rows: "3", value: ownerForm.bio_public, onChange: e => setOwnerForm(Object.assign(Object.assign({}, ownerForm), { bio_public: e.target.value })) })),
+                        React.createElement("p", { className: "muted", style: { fontSize: 12, marginBottom: 10 } }, "Suas altera\u00E7\u00F5es v\u00E3o passar pela aprova\u00E7\u00E3o do mestre de novo antes de aparecer pros outros."),
+                        React.createElement("div", { style: { display: 'flex', gap: 10 } },
+                            React.createElement("button", { className: "btn-primary btn-sm", onClick: saveOwnerEdit }, "Salvar e enviar"),
+                            React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => setOwnerEdit(false) }, "Cancelar")))))),
                 isAdmin && (React.createElement("div", { className: "admin-box" },
                     React.createElement("div", { className: "admin-box-title" }, "Notas do mestre (s\u00F3 admin v\u00EA)"),
                     React.createElement("textarea", { rows: "3", defaultValue: char.admin_notes || '', onBlur: async (e) => {
@@ -1125,6 +1173,7 @@ function CharactersView({ profile, toast, initialOpenId, clearInitialOpenId }) {
                     React.createElement("div", { className: "rank-badge " + rankClass(c.rank) },
                         React.createElement("span", null, c.rank))),
                 c.status === 'pendente_aprovacao' && React.createElement("p", { style: { fontSize: 11, color: 'var(--gold)', marginBottom: 6 } }, "\u23F3 Aguardando aprova\u00E7\u00E3o"),
+                c.status === 'rejeitado' && React.createElement("p", { style: { fontSize: 11, color: 'var(--magenta)', marginBottom: 6 } }, "\u274C Recusado pelo mestre"),
                 React.createElement("p", { className: "card-desc" }, c.bio_public ? c.bio_public.slice(0, 90) : 'Sem biografia ainda.'))));
     }
     const myChar = !isAdmin ? (chars || []).find(c => c.owner_id === profile.id) : null;
@@ -1165,6 +1214,12 @@ function CharactersView({ profile, toast, initialOpenId, clearInitialOpenId }) {
             "\u23F3 Seu personagem ",
             React.createElement("b", null, myChar.name),
             " foi enviado e est\u00E1 aguardando aprova\u00E7\u00E3o do mestre.")),
+        !isAdmin && myChar && myChar.status === 'rejeitado' && (React.createElement("div", { className: "empty-state", style: { marginBottom: 20, borderColor: 'var(--magenta)', color: 'var(--magenta)' } },
+            "\u274C Seu personagem ",
+            React.createElement("b", null, myChar.name),
+            " foi recusado pelo mestre.",
+            myChar.rejection_reason ? ' Motivo: "' + myChar.rejection_reason + '"' : '',
+            " Abra a ficha dele pra editar e enviar de novo.")),
         isAdmin && (React.createElement("div", { style: { marginBottom: 20 } },
             !creating && React.createElement("button", { className: "btn-primary btn-sm", onClick: () => setCreating(true) }, "+ Novo personagem"),
             creating && (React.createElement("div", { className: "composer", style: { marginBottom: 0 } },
