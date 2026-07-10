@@ -2204,14 +2204,14 @@ function ActionsView({ profile, toast, actionLocation, clearActionLocation }) {
         toast(status === 'aprovada' ? 'Ação aprovada.' : 'Ação rejeitada.');
         loadFeed();
     }
+    const [confirmDelete, setConfirmDelete] = useState(null); // actionId sendo confirmado
     async function deleteAction(actionId) {
-        if (!confirm('Apagar esta ação de vez?'))
-            return;
         const { error } = await supabase.from('actions').delete().eq('id', actionId);
         if (error) {
-            toast('Erro: ' + error.message);
+            toast('Erro ao apagar: ' + error.message);
             return;
         }
+        setConfirmDelete(null);
         toast('Ação apagada.');
         loadFeed();
     }
@@ -2233,7 +2233,11 @@ function ActionsView({ profile, toast, actionLocation, clearActionLocation }) {
                     " \u00B7 ",
                     a.player ? a.player.display_name : '',
                     a.location ? ' · 📍 ' + a.location.name : ''),
-                isAdmin && React.createElement("button", { className: "btn-danger", style: { padding: '2px 8px', fontSize: 11 }, onClick: () => deleteAction(a.id) }, "\uD83D\uDDD1")),
+                isAdmin && confirmDelete !== a.id && (React.createElement("button", { className: "btn-danger", style: { padding: '2px 10px', fontSize: 11 }, onClick: () => setConfirmDelete(a.id) }, "\uD83D\uDDD1 Apagar")),
+                isAdmin && confirmDelete === a.id && (React.createElement("span", { style: { display: 'flex', gap: 6, alignItems: 'center' } },
+                    React.createElement("span", { style: { fontSize: 11, color: 'var(--magenta)' } }, "Confirmar?"),
+                    React.createElement("button", { className: "btn-danger", style: { padding: '2px 10px', fontSize: 11 }, onClick: () => deleteAction(a.id) }, "Sim, apagar"),
+                    React.createElement("button", { className: "btn-ghost btn-sm", style: { padding: '2px 10px', fontSize: 11 }, onClick: () => setConfirmDelete(null) }, "N\u00E3o")))),
             React.createElement("p", { style: { fontSize: 14, marginBottom: 8 } }, a.action_text),
             React.createElement("span", { className: "muted", style: { fontSize: 12 } },
                 "Atributo: ",
