@@ -851,18 +851,34 @@ function ClassesView({ profile, toast }) {
 /* ============================================================
    NAV
    ============================================================ */
-function Nav({ view, setView, profile, onLogout }) {
+function Nav({ view, setView, profile, onLogout, onlineUsers }) {
     const items = [
         ['home', 'Home'], ['characters', 'Personagens'], ['classes', 'Classes'], ['races', 'Raças'], ['guilds', 'Clãs & Guildas'], ['map', 'Mundo'], ['actions', 'Ações & Dados'],
     ];
     if (profile && profile.role === 'admin')
         items.push(['system', 'Sistema']);
+    const [showOnline, setShowOnline] = useState(false);
     return (React.createElement("header", { className: "topbar" },
         React.createElement("div", { className: "brand" },
             React.createElement("span", { className: "brand-mark" }, "\u2694"),
             React.createElement("span", { className: "brand-text" }, "OS ESCOLHIDOS")),
         React.createElement("nav", { className: "main-nav" }, items.map(([id, label]) => (React.createElement("button", { key: id, className: "nav-btn " + (view === id ? 'active' : ''), onClick: () => setView(id) }, label)))),
         React.createElement("div", { className: "who" },
+            React.createElement("div", { style: { position: 'relative' } },
+                React.createElement("button", { className: "btn-ghost btn-sm", style: { display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px' }, onClick: () => setShowOnline(!showOnline) },
+                    React.createElement("span", { style: { width: 8, height: 8, borderRadius: '50%', background: '#4cde7a', display: 'inline-block', boxShadow: '0 0 6px #4cde7a' } }),
+                    React.createElement("span", { style: { fontSize: 13 } }, onlineUsers.length)),
+                showOnline && (React.createElement("div", { style: {
+                        position: 'absolute', right: 0, top: 'calc(100% + 8px)', minWidth: 180,
+                        background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 12,
+                        padding: '10px 14px', zIndex: 50, boxShadow: '0 8px 32px rgba(0,0,0,.5)'
+                    } },
+                    React.createElement("div", { style: { fontSize: 11, letterSpacing: 2, color: 'var(--muted)', marginBottom: 8, textTransform: 'uppercase' } }, "Online agora"),
+                    onlineUsers.length === 0 && React.createElement("div", { style: { fontSize: 13, color: 'var(--muted)' } }, "Ningu\u00E9m online"),
+                    onlineUsers.map(u => (React.createElement("div", { key: u.profile_id, style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 } },
+                        React.createElement("span", { style: { width: 7, height: 7, borderRadius: '50%', background: '#4cde7a', flexShrink: 0 } }),
+                        React.createElement("span", { style: { fontSize: 13.5, fontWeight: 600 } }, u.display_name),
+                        React.createElement("span", { style: { fontSize: 11, color: 'var(--muted)', marginLeft: 'auto' } }, u.role === 'admin' ? 'Mestre' : 'Jogador'))))))),
             React.createElement(AppearanceMenu, null),
             React.createElement("span", { className: "role-pill " + (profile && profile.role === 'admin' ? 'role-admin' : 'role-player') }, profile && profile.role === 'admin' ? 'Mestre' : 'Jogador'),
             React.createElement("span", null, profile ? profile.display_name : ''),
@@ -2120,10 +2136,14 @@ function ActionsView({ profile, toast, actionLocation, clearActionLocation }) {
         loadSettings();
         loadFeed();
         const ch = supabase.channel('actions_live')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'actions' }, loadFeed)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, loadSettings)
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'actions' }, loadFeed)
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'actions' }, loadFeed)
+            .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'actions' }, loadFeed)
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'settings' }, loadSettings)
             .subscribe();
-        return () => supabase.removeChannel(ch);
+        // polling de segurança: garante que ações novas apareçam mesmo se o realtime falhar
+        const poll = setInterval(loadFeed, 5000);
+        return () => { supabase.removeChannel(ch); clearInterval(poll); };
     }, []);
     const currentTurn = settings ? settings.current_turn : 1;
     const myTurnAction = (feed && charId) ? feed.find(a => a.character_id === charId && a.turn === currentTurn) : null;
@@ -2540,6 +2560,7 @@ function App() {
     const [toastMsg, showToast] = useToast();
     const [actionLocation, setActionLocation] = useState(null);
     const [openCharacterId, setOpenCharacterId] = useState(null);
+    const [onlineUsers, setOnlineUsers] = useState([]);
     useEffect(() => {
         const saved = loadAppearance();
         applyAppearance(saved.theme, saved.font);
@@ -2570,6 +2591,40 @@ function App() {
         loadProfile();
         return () => { cancelled = true; };
     }, [session]);
+    // presença online: heartbeat a cada 20s + escuta mudanças
+    useEffect(() => {
+        if (!profile)
+            return;
+        async function heartbeat() {
+            await supabase.from('online_presence').upsert({
+                profile_id: profile.id,
+                display_name: profile.display_name,
+                role: profile.role,
+                last_seen: new Date().toISOString(),
+            }, { onConflict: 'profile_id' });
+        }
+        async function loadOnline() {
+            // considera online quem viu nos últimos 45 segundos
+            const cutoff = new Date(Date.now() - 45000).toISOString();
+            const { data } = await supabase.from('online_presence').select('*').gte('last_seen', cutoff);
+            setOnlineUsers(data || []);
+        }
+        heartbeat();
+        loadOnline();
+        const hb = setInterval(() => { heartbeat(); loadOnline(); }, 20000);
+        const ch = supabase.channel('presence_live')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'online_presence' }, loadOnline)
+            .subscribe();
+        // limpa presença ao sair
+        function cleanup() { supabase.from('online_presence').delete().eq('profile_id', profile.id); }
+        window.addEventListener('beforeunload', cleanup);
+        return () => {
+            clearInterval(hb);
+            supabase.removeChannel(ch);
+            window.removeEventListener('beforeunload', cleanup);
+            cleanup();
+        };
+    }, [profile]);
     if (session === undefined)
         return React.createElement("div", { className: "loading" }, "Carregando...");
     if (!session)
@@ -2577,7 +2632,7 @@ function App() {
     if (!profile)
         return React.createElement("div", { className: "loading" }, "Preparando sua ficha...");
     return (React.createElement(React.Fragment, null,
-        React.createElement(Nav, { view: view, setView: setView, profile: profile, onLogout: () => supabase.auth.signOut() }),
+        React.createElement(Nav, { view: view, setView: setView, profile: profile, onLogout: () => supabase.auth.signOut(), onlineUsers: onlineUsers }),
         React.createElement(LevelUpWatcher, { profile: profile }),
         React.createElement("main", null,
             view === 'home' && React.createElement(HomeView, { profile: profile, toast: showToast }),
