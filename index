@@ -2214,25 +2214,17 @@ function ActionsView({ profile, toast, actionLocation, clearActionLocation }) {
         const modifier = attrModifier(attrVal);
         const total = dieRoll + modifier;
         const success = total >= action.dc;
-        const { data: updated, error } = await supabase
+        const { error } = await supabase
             .from('actions')
             .update({ roll: dieRoll, modifier: modifier, total: total, success: success, status: 'pendente' })
-            .eq('id', action.id)
-            .select()
-            .single();
+            .eq('id', action.id);
         setRolling(false);
         if (error) {
             toast('Erro ao rolar: ' + error.message);
             return;
         }
-        // confirma que salvou
-        if (!updated || updated.roll == null) {
-            toast('Erro: dado não salvo, tente de novo.');
-            return;
-        }
         setLastRoll({ dieRoll, modifier, total, dc: action.dc, success });
         toast(success ? '🎲 ' + total + ' — SUCESSO!' : '🎲 ' + total + ' — Fracasso...');
-        // força reload imediato em ambas as telas
         await loadFeed();
     }
     async function respond(actionId, text) {
