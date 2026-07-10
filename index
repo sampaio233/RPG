@@ -206,6 +206,8 @@ label{ font-size:12px; color:var(--muted); text-transform:uppercase; letter-spac
   pointer-events:auto; box-shadow:0 2px 8px rgba(0,0,0,.5); transition:transform .15s ease; }
 .map-char-avatar:hover{ transform:scale(1.25); z-index:4; }
 .map-char-avatar img{ width:100%; height:100%; object-fit:cover; }
+.map-guild-badge{ position:absolute; transform:translate(-50%, -34px); display:flex; gap:2px; z-index:3; pointer-events:none;
+  background:rgba(10,10,18,.85); border:1px solid var(--gold); border-radius:10px; padding:2px 6px; font-size:13px; white-space:nowrap; }
 @keyframes pulse{ 0%{box-shadow:0 0 0 0 rgba(139,63,251,.5);} 70%{box-shadow:0 0 0 14px rgba(139,63,251,0);} 100%{box-shadow:0 0 0 0 rgba(139,63,251,0);} }
 .map-label{ position:absolute; top:32px; left:50%; transform:translateX(-50%); font-size:10.5px; white-space:nowrap; background:rgba(10,10,18,.85);
   padding:2px 7px; border-radius:6px; pointer-events:none; opacity:0; transition:opacity .2s ease; }
@@ -431,8 +433,9 @@ function GuildsView({ profile, toast }) {
     const isAdmin = profile.role === 'admin';
     const [guilds, setGuilds] = useState(null);
     const [characters, setCharacters] = useState([]);
+    const [locations, setLocations] = useState([]);
     const [creating, setCreating] = useState(false);
-    const [form, setForm] = useState({ name: '', type: 'guilda', description: '', history: '', icon: '🛡️' });
+    const [form, setForm] = useState({ name: '', type: 'guilda', description: '', history: '', icon: '🛡️', location_id: '' });
     const [editingId, setEditingId] = useState(null);
     const [openId, setOpenId] = useState(null);
     const [images, setImages] = useState([]);
@@ -443,6 +446,8 @@ function GuildsView({ profile, toast }) {
         setGuilds(data || []);
         const { data: chars } = await supabase.from('characters').select('id,name,avatar_url,rank,guild_id').eq('status', 'aprovado');
         setCharacters(chars || []);
+        const { data: locs } = await supabase.from('map_locations').select('id,name').order('name');
+        setLocations(locs || []);
     }
     useEffect(() => { load(); }, []);
     async function loadImages(guildId) {
@@ -450,7 +455,7 @@ function GuildsView({ profile, toast }) {
         setImages(data || []);
     }
     function startCreate() {
-        setForm({ name: '', type: 'guilda', description: '', history: '', icon: '🛡️' });
+        setForm({ name: '', type: 'guilda', description: '', history: '', icon: '🛡️', location_id: '' });
         setEditingId(null);
         setCreating(true);
     }
@@ -464,7 +469,7 @@ function GuildsView({ profile, toast }) {
             toast('Digite um nome.');
             return;
         }
-        const payload = { name: form.name.trim(), type: form.type, description: form.description, history: form.history, icon: form.icon || '🛡️' };
+        const payload = { name: form.name.trim(), type: form.type, description: form.description, history: form.history, icon: form.icon || '🛡️', location_id: form.location_id || null };
         const { error } = editingId
             ? await supabase.from('guilds').update(payload).eq('id', editingId)
             : await supabase.from('guilds').insert(payload);
@@ -539,7 +544,12 @@ function GuildsView({ profile, toast }) {
                         React.createElement("label", null, "Tipo"),
                         React.createElement("select", { value: form.type, onChange: e => setForm(Object.assign(Object.assign({}, form), { type: e.target.value })) },
                             React.createElement("option", { value: "guilda" }, "Guilda"),
-                            React.createElement("option", { value: "cla" }, "Cl\u00E3")))),
+                            React.createElement("option", { value: "cla" }, "Cl\u00E3"))),
+                    React.createElement("div", { className: "field" },
+                        React.createElement("label", null, "Sede (local no mapa)"),
+                        React.createElement("select", { value: form.location_id || '', onChange: e => setForm(Object.assign(Object.assign({}, form), { location_id: e.target.value })) },
+                            React.createElement("option", { value: "" }, "\u2014 nenhum \u2014"),
+                            locations.map(l => React.createElement("option", { key: l.id, value: l.id }, l.name))))),
                 React.createElement("div", { className: "field" },
                     React.createElement("label", null, "Descri\u00E7\u00E3o curta"),
                     React.createElement("textarea", { rows: "2", value: form.description || '', onChange: e => setForm(Object.assign(Object.assign({}, form), { description: e.target.value })) })),
@@ -560,7 +570,9 @@ function GuildsView({ profile, toast }) {
                             g.icon,
                             " ",
                             g.name),
-                        React.createElement("div", { className: "card-power" }, g.type === 'cla' ? 'Clã' : 'Guilda'))),
+                        React.createElement("div", { className: "card-power" },
+                            g.type === 'cla' ? 'Clã' : 'Guilda',
+                            g.location_id ? ' · 📍 ' + ((locations.find(l => l.id === g.location_id) || {}).name || '') : ''))),
                 React.createElement("p", { className: "card-desc" }, g.description || 'Sem descrição ainda.')))))),
         openGuild && (React.createElement("div", { className: "overlay open", onClick: e => { if (e.target.classList.contains('overlay'))
                 setOpenId(null); } },
@@ -576,7 +588,9 @@ function GuildsView({ profile, toast }) {
                                 openGuild.icon,
                                 " ",
                                 openGuild.name),
-                            React.createElement("div", { className: "sheet-power" }, openGuild.type === 'cla' ? 'Clã' : 'Guilda'))),
+                            React.createElement("div", { className: "sheet-power" },
+                                openGuild.type === 'cla' ? 'Clã' : 'Guilda',
+                                openGuild.location_id ? ' · 📍 ' + ((locations.find(l => l.id === openGuild.location_id) || {}).name || '') : ''))),
                     isAdmin && React.createElement("button", { className: "btn-primary btn-sm sheet-hero-upload", onClick: () => bannerRef.current.click() }, "\uD83D\uDDBC\uFE0F Trocar banner"),
                     React.createElement("input", { type: "file", accept: "image/*", ref: bannerRef, style: { display: 'none' }, onChange: uploadBanner })),
                 React.createElement("p", { style: { marginBottom: 14, color: 'var(--muted)' } }, openGuild.description),
@@ -1046,7 +1060,6 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
         if (char.status !== 'aprovado') {
             payload.class_id = ownerForm.class_id || null;
             payload.race_id = ownerForm.race_id || null;
-            payload.guild_id = ownerForm.guild_id || null;
             payload.current_location_id = ownerForm.current_location_id || null;
             payload.origin_story = ownerForm.origin_story;
         }
@@ -1236,6 +1249,8 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
                     c.name)))))),
             React.createElement("div", { className: "tabs" }, ['sobre', 'ficha', 'habilidades', 'inventario', 'historico'].map(t => (React.createElement("button", { key: t, className: "tab-btn " + (tab === t ? 'active' : ''), onClick: () => setTab(t) }, t === 'sobre' ? 'Sobre' : t === 'ficha' ? 'Ficha & EXP' : t === 'habilidades' ? 'Habilidades' : t === 'inventario' ? 'Inventário' : 'Histórico')))),
             tab === 'sobre' && (React.createElement("div", { className: "tab-panel" },
+                isAdmin && (React.createElement("div", { style: { display: 'flex', justifyContent: 'flex-end', marginBottom: 14 } },
+                    React.createElement("button", { className: "btn-danger", onClick: deleteCharacterAdmin }, "\uD83D\uDDD1\uFE0F Excluir este personagem"))),
                 React.createElement("p", null,
                     React.createElement("b", null, "Ra\u00E7a:"),
                     " ",
@@ -1300,14 +1315,6 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
                                         c.icon,
                                         " ",
                                         c.name)))),
-                            React.createElement("div", { className: "field" },
-                                React.createElement("label", null, "Cl\u00E3 / Guilda"),
-                                React.createElement("select", { value: ownerForm.guild_id, onChange: e => setOwnerForm(Object.assign(Object.assign({}, ownerForm), { guild_id: e.target.value })) },
-                                    React.createElement("option", { value: "" }, "\u2014 nenhum(a) \u2014"),
-                                    guilds.map(g => React.createElement("option", { key: g.id, value: g.id },
-                                        g.icon,
-                                        " ",
-                                        g.name)))),
                             React.createElement("div", { className: "field" },
                                 React.createElement("label", null, "Onde ele nasceu"),
                                 React.createElement("select", { value: ownerForm.current_location_id, onChange: e => setOwnerForm(Object.assign(Object.assign({}, ownerForm), { current_location_id: e.target.value })) },
@@ -1575,7 +1582,6 @@ function CharactersView({ profile, toast, initialOpenId, clearInitialOpenId }) {
             payload.appearance = newAppearance.trim();
             payload.class_id = newClassId || null;
             payload.race_id = newRaceId || null;
-            payload.guild_id = newGuildId || null;
             payload.origin_story = newOriginStory.trim() || null;
             payload.current_location_id = newBirthLocation || null;
         }
@@ -1638,15 +1644,8 @@ function CharactersView({ profile, toast, initialOpenId, clearInitialOpenId }) {
                         classes.map(c => React.createElement("option", { key: c.id, value: c.id },
                             c.icon,
                             " ",
-                            c.name)))),
-                React.createElement("div", { className: "field" },
-                    React.createElement("label", null, "Cl\u00E3 / Guilda"),
-                    React.createElement("select", { value: newGuildId, onChange: e => setNewGuildId(e.target.value) },
-                        React.createElement("option", { value: "" }, "\u2014 nenhum(a) \u2014"),
-                        guilds.map(g => React.createElement("option", { key: g.id, value: g.id },
-                            g.icon,
-                            " ",
-                            g.name))))),
+                            c.name))))),
+            React.createElement("p", { className: "muted", style: { fontSize: 12, marginTop: -8, marginBottom: 14 } }, "Cl\u00E3 ou guilda n\u00E3o se escolhe aqui \u2014 isso se conquista durante a hist\u00F3ria, com a aprova\u00E7\u00E3o do mestre."),
             React.createElement("div", { className: "field" },
                 React.createElement("label", null, "Apar\u00EAncia"),
                 React.createElement("textarea", { rows: "2", value: newAppearance, onChange: e => setNewAppearance(e.target.value), placeholder: "Como seu personagem se parece..." })),
@@ -1724,6 +1723,7 @@ function MapView({ profile, toast, goto, setActionLocation, openCharacter }) {
     const [shopItems, setShopItems] = useState([]);
     const [myChar, setMyChar] = useState(null);
     const [unlockedIds, setUnlockedIds] = useState([]);
+    const [guilds, setGuilds] = useState([]);
     const [settings, setSettings] = useState(null);
     const [selected, setSelected] = useState(null);
     const [editMode, setEditMode] = useState(false);
@@ -1737,6 +1737,8 @@ function MapView({ profile, toast, goto, setActionLocation, openCharacter }) {
     async function load() {
         const { data: locs } = await supabase.from('map_locations').select('*').order('created_at');
         setLocations(locs || []);
+        const { data: gld } = await supabase.from('guilds').select('id,name,icon,type,location_id');
+        setGuilds(gld || []);
         const { data: s } = await supabase.from('settings').select('*').eq('id', 1).single();
         setSettings(s);
         if (isAdmin) {
@@ -1918,6 +1920,12 @@ function MapView({ profile, toast, goto, setActionLocation, openCharacter }) {
                     React.createElement("span", { className: "map-point-icon" }, (LOCATION_TYPES[loc.type] || LOCATION_TYPES.cidade).icon),
                     React.createElement("span", { className: "map-label" }, loc.name)))),
                 locations.map(loc => {
+                    const guildsHere = guilds.filter(g => g.location_id === loc.id);
+                    if (guildsHere.length === 0)
+                        return null;
+                    return (React.createElement("div", { key: 'guilds-' + loc.id, className: "map-guild-badge", style: { left: loc.x + '%', top: loc.y + '%' }, title: guildsHere.map(g => g.name).join(', ') }, guildsHere.slice(0, 3).map(g => React.createElement("span", { key: g.id }, g.icon))));
+                }),
+                locations.map(loc => {
                     const here = characters.filter(c => c.current_location_id === loc.id);
                     if (here.length === 0)
                         return null;
@@ -1978,6 +1986,12 @@ function MapView({ profile, toast, goto, setActionLocation, openCharacter }) {
                     React.createElement("h3", { className: "map-info-title" }, selected.name),
                     React.createElement("p", { style: { color: 'var(--muted)', fontSize: 14, marginBottom: 10 } }, selected.description),
                     selected.current_story && React.createElement("p", { style: { fontSize: 14, lineHeight: 1.6, marginBottom: 14 } }, selected.current_story),
+                    guilds.filter(g => g.location_id === selected.id).length > 0 && (React.createElement("div", { style: { marginBottom: 14 } },
+                        React.createElement("div", { className: "attr-label", style: { marginBottom: 6 } }, "Cl\u00E3s/Guildas sediados aqui"),
+                        React.createElement("div", { style: { display: 'flex', gap: 6, flexWrap: 'wrap' } }, guilds.filter(g => g.location_id === selected.id).map(g => (React.createElement("span", { key: g.id, style: { display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 20, padding: '4px 10px', fontSize: 12.5 } },
+                            g.icon,
+                            " ",
+                            g.name)))))),
                     React.createElement("div", { style: { marginBottom: 14 } },
                         React.createElement("div", { className: "attr-label", style: { marginBottom: 6 } }, "Fotos do local"),
                         React.createElement("div", { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
@@ -2330,6 +2344,37 @@ function SystemView({ profile, toast }) {
         await supabase.from('settings').update({ default_dc: value }).eq('id', 1);
         toast('CD padrão atualizada.');
     }
+    async function resetStory() {
+        if (!confirm('Apagar TODA a história (capítulos) e o registro de ações/turnos? Isso não pode ser desfeito.'))
+            return;
+        await supabase.from('story_posts').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        await supabase.from('actions').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        await supabase.from('purchase_requests').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        await supabase.from('settings').update({ current_turn: 1 }).eq('id', 1);
+        toast('História, ações e turnos reiniciados.');
+        load();
+    }
+    async function resetCharacters() {
+        if (!confirm('Excluir TODOS os personagens (de todos os jogadores, e os NPCs)? Isso não pode ser desfeito.'))
+            return;
+        await supabase.from('characters').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        toast('Todos os personagens foram excluídos.');
+        load();
+    }
+    async function resetEverything() {
+        const typed = prompt('Isso vai apagar TUDO: história, ações, turnos e todos os personagens (mapa, classes, raças e clãs/guildas continuam). Digite REINICIAR para confirmar:');
+        if (typed !== 'REINICIAR') {
+            toast('Cancelado.');
+            return;
+        }
+        await supabase.from('story_posts').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        await supabase.from('actions').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        await supabase.from('purchase_requests').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        await supabase.from('characters').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        await supabase.from('settings').update({ current_turn: 1, current_location_id: null }).eq('id', 1);
+        toast('Nova campanha pronta! Tudo foi reiniciado.');
+        load();
+    }
     return (React.createElement("section", null,
         React.createElement("h2", { className: "section-title" },
             React.createElement("span", { className: "tag" }, "05"),
@@ -2359,11 +2404,24 @@ function SystemView({ profile, toast }) {
                 React.createElement("span", { className: "role-pill " + (p.role === 'admin' ? 'role-admin' : 'role-player') }, p.role === 'admin' ? 'Mestre' : 'Jogador'),
                 p.id !== profile.id && React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => toggleRole(p) }, "Alternar")))))),
         React.createElement("h3", { style: { fontFamily: 'var(--font-display)', fontSize: 16, marginBottom: 12 } }, "Vincular personagens aos jogadores"),
-        React.createElement("div", null, chars.map(c => (React.createElement("div", { key: c.id, className: "roll-card", style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 } },
+        React.createElement("div", { style: { marginBottom: 36 } }, chars.map(c => (React.createElement("div", { key: c.id, className: "roll-card", style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 } },
             React.createElement("b", null, c.name),
             React.createElement("select", { style: { width: 220 }, value: c.owner_id || '', onChange: e => assignOwner(c.id, e.target.value) },
                 React.createElement("option", { value: "" }, "\u2014 sem dono \u2014"),
-                profiles.map(p => React.createElement("option", { key: p.id, value: p.id }, p.display_name)))))))));
+                profiles.map(p => React.createElement("option", { key: p.id, value: p.id }, p.display_name))))))),
+        React.createElement("h3", { style: { fontFamily: 'var(--font-display)', fontSize: 16, marginBottom: 12, color: 'var(--magenta)' } }, "\u26A0\uFE0F Reiniciar / Nova Campanha"),
+        React.createElement("div", { className: "admin-box", style: { marginBottom: 20 } },
+            React.createElement("div", { className: "admin-box-title" }, "Apagar hist\u00F3ria e a\u00E7\u00F5es"),
+            React.createElement("p", { className: "muted", style: { fontSize: 13, marginBottom: 10 } }, "Remove todos os cap\u00EDtulos, o registro de a\u00E7\u00F5es dos jogadores e volta o turno pro 1. Personagens, mapa e classes continuam intactos."),
+            React.createElement("button", { className: "btn-danger", onClick: resetStory }, "Apagar hist\u00F3ria e a\u00E7\u00F5es")),
+        React.createElement("div", { className: "admin-box", style: { marginBottom: 20 } },
+            React.createElement("div", { className: "admin-box-title" }, "Excluir todos os personagens"),
+            React.createElement("p", { className: "muted", style: { fontSize: 13, marginBottom: 10 } }, "Remove todos os personagens (de jogadores e NPCs). \u00DAtil se quiser que todo mundo recrie do zero. Hist\u00F3ria e mapa continuam intactos."),
+            React.createElement("button", { className: "btn-danger", onClick: resetCharacters }, "Excluir todos os personagens")),
+        React.createElement("div", { className: "admin-box" },
+            React.createElement("div", { className: "admin-box-title" }, "Nova campanha do zero"),
+            React.createElement("p", { className: "muted", style: { fontSize: 13, marginBottom: 10 } }, "Apaga hist\u00F3ria, a\u00E7\u00F5es, turnos e TODOS os personagens de uma vez. Mapa, classes, ra\u00E7as e cl\u00E3s/guildas continuam do jeito que est\u00E3o (assim voc\u00EA n\u00E3o perde o mundo que j\u00E1 construiu)."),
+            React.createElement("button", { className: "btn-danger", onClick: resetEverything }, "Reiniciar tudo pra uma nova campanha"))));
 }
 /* ============================================================
    APP RAIZ
