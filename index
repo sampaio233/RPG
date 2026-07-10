@@ -1883,16 +1883,29 @@ function MapView({ profile, toast, goto, setActionLocation, openCharacter }) {
             toast('Você precisa ter um personagem aprovado para comprar.');
             return;
         }
-        if (myChar.coins < price) {
-            toast('Moedas insuficientes! Você tem ' + myChar.coins + ' moedas.');
+        if ((myChar.coins || 0) < price) {
+            toast('Moedas insuficientes! Você tem ' + (myChar.coins || 0) + ' moedas.');
             return;
         }
-        const { error } = await supabase.rpc('buy_item', { p_character_id: myChar.id, p_item_id: itemId });
-        if (error) {
-            toast('Erro: ' + error.message);
+        // desconta moedas
+        const { error: e1 } = await supabase.from('characters')
+            .update({ coins: myChar.coins - price })
+            .eq('id', myChar.id)
+            .eq('owner_id', profile.id); // garante que só o dono compra
+        if (e1) {
+            toast('Erro ao descontar moedas: ' + e1.message);
             return;
         }
-        toast('Comprado! -' + price + ' moedas.');
+        // adiciona item ao inventário
+        const { data: existing } = await supabase.from('character_items')
+            .select('id,quantity').eq('character_id', myChar.id).eq('item_id', itemId).maybeSingle();
+        if (existing) {
+            await supabase.from('character_items').update({ quantity: existing.quantity + 1 }).eq('id', existing.id);
+        }
+        else {
+            await supabase.from('character_items').insert({ character_id: myChar.id, item_id: itemId, quantity: 1 });
+        }
+        toast('💰 Comprado! -' + price + ' moedas.');
         load();
     }
     async function uploadLocationImage(e) {
