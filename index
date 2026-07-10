@@ -1017,6 +1017,19 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
         supabase.from('guilds').select('*').order('name').then(({ data }) => setGuilds(data || []));
         loadInventory();
         loadPurchaseRequests();
+        // realtime: mudanças aparecem na hora pra todos
+        const ch = supabase.channel('sheet_' + char.id)
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'characters', filter: 'id=eq.' + char.id }, () => onChanged())
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'character_items', filter: 'character_id=eq.' + char.id }, loadInventory)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'skills', filter: 'character_id=eq.' + char.id }, () => {
+            supabase.from('skills').select('*').eq('character_id', char.id).order('depth').then(({ data }) => setSkills(data || []));
+        })
+            .subscribe();
+        const poll = setInterval(() => { loadInventory(); }, 2000);
+        function onInvChanged(e) { if (e.detail && e.detail.characterId === char.id)
+            loadInventory(); }
+        window.addEventListener('inventory-changed', onInvChanged);
+        return () => { supabase.removeChannel(ch); clearInterval(poll); window.removeEventListener('inventory-changed', onInvChanged); };
     }, [char.id]);
     async function loadInventory() {
         const { data } = await supabase.from('character_items').select('*, item:items(*)').eq('character_id', char.id);
@@ -1498,15 +1511,33 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
                     "\uD83D\uDCB0 Moedas: ",
                     React.createElement("b", { style: { color: 'var(--gold)' } }, char.coins)),
                 inventory.length === 0 && React.createElement("p", { className: "muted" }, "Invent\u00E1rio vazio."),
-                inventory.map(inv => (React.createElement("div", { key: inv.id, className: "skill-node unlocked" },
-                    React.createElement("div", { className: "skill-icon" }, inv.item.type === 'pocao' ? '🧪' : inv.item.type === 'arma' ? '⚔️' : inv.item.type === 'armadura' ? '🛡️' : '🔧'),
-                    React.createElement("div", { className: "skill-body" },
-                        React.createElement("div", { className: "skill-name" },
-                            inv.item.name,
-                            " \u00D7 ",
-                            inv.quantity),
-                        React.createElement("div", { className: "skill-req" }, inv.item.description)),
-                    inv.item.type === 'pocao' && (isOwner || isAdmin) && (React.createElement("button", { className: "btn-primary btn-sm", onClick: () => useItem(inv.item.id) }, "Usar"))))))),
+                inventory.map(inv => {
+                    const it = inv.item;
+                    const isEquippable = it.type === 'arma' || it.type === 'armadura' || it.type === 'ferramenta';
+                    const hasBonus = it.bonus_forca || it.bonus_agilidade || it.bonus_inteligencia || it.bonus_hp_max || it.bonus_mp_max || it.resistencia;
+                    return (React.createElement("div", { key: inv.id, className: "skill-node " + (inv.equipped ? 'unlocked' : 'unlocked'), style: inv.equipped ? { borderColor: 'var(--gold)' } : {} },
+                        React.createElement("div", { className: "skill-icon" }, it.type === 'pocao' ? '🧪' : it.type === 'arma' ? '⚔️' : it.type === 'armadura' ? '🛡️' : '🔧'),
+                        React.createElement("div", { className: "skill-body" },
+                            React.createElement("div", { className: "skill-name" },
+                                it.name,
+                                " \u00D7 ",
+                                inv.quantity,
+                                inv.equipped && React.createElement("span", { style: { fontSize: 11, color: 'var(--gold)', marginLeft: 6 } }, "EQUIPADO")),
+                            React.createElement("div", { className: "skill-req" }, it.description),
+                            hasBonus && (React.createElement("div", { style: { fontSize: 11.5, color: 'var(--cyan)', marginTop: 3 } },
+                                it.bonus_forca > 0 ? `+${it.bonus_forca} Força ` : '',
+                                it.bonus_agilidade > 0 ? `+${it.bonus_agilidade} Agi ` : '',
+                                it.bonus_inteligencia > 0 ? `+${it.bonus_inteligencia} Int ` : '',
+                                it.bonus_hp_max > 0 ? `+${it.bonus_hp_max} HP ` : '',
+                                it.bonus_mp_max > 0 ? `+${it.bonus_mp_max} MP ` : '',
+                                it.resistencia > 0 ? `${it.resistencia} Res` : ''))),
+                        React.createElement("div", { style: { display: 'flex', flexDirection: 'column', gap: 4 } },
+                            it.type === 'pocao' && (isOwner || isAdmin) && (React.createElement("button", { className: "btn-primary btn-sm", onClick: () => useItem(it.id) }, "Usar")),
+                            isEquippable && (isOwner || isAdmin) && (React.createElement("button", { className: "btn-sm " + (inv.equipped ? 'btn-ghost' : 'btn-primary'), onClick: async () => {
+                                    await supabase.from('character_items').update({ equipped: !inv.equipped }).eq('id', inv.id);
+                                    loadInventory();
+                                } }, inv.equipped ? 'Desequipar' : 'Equipar')))));
+                }))),
             tab === 'historico' && (React.createElement("div", { className: "tab-panel" },
                 actionHistory.length === 0 && React.createElement("p", { className: "muted" }, "Nenhuma a\u00E7\u00E3o registrada ainda para este personagem."),
                 actionHistory.map(a => (React.createElement("div", { key: a.id, className: "roll-card" },
@@ -1647,7 +1678,14 @@ function CharactersView({ profile, toast, initialOpenId, clearInitialOpenId }) {
         const { data: locs } = await supabase.from('map_locations').select('*').order('name');
         setLocations(locs || []);
     }
-    useEffect(() => { load(); }, []);
+    useEffect(() => {
+        load();
+        const ch = supabase.channel('chars_live')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'characters' }, load)
+            .subscribe();
+        const poll = setInterval(load, 2000);
+        return () => { supabase.removeChannel(ch); clearInterval(poll); };
+    }, []);
     const [previewLocId, setPreviewLocId] = useState(null);
     const [previewImages, setPreviewImages] = useState([]);
     async function togglePreview(locId) {
@@ -1822,7 +1860,7 @@ function MapView({ profile, toast, goto, setActionLocation, openCharacter }) {
     const [editingLoc, setEditingLoc] = useState(null);
     const [creatingAt, setCreatingAt] = useState(null);
     const [newLoc, setNewLoc] = useState({ name: '', type: 'cidade' });
-    const [newItem, setNewItem] = useState({ name: '', type: 'pocao', quality: 'comum', price: 10, heal_amount: 0, description: '' });
+    const [newItem, setNewItem] = useState({ name: '', type: 'pocao', quality: 'comum', price: 10, heal_amount: 0, description: '', bonus_forca: 0, bonus_agilidade: 0, bonus_inteligencia: 0, bonus_hp_max: 0, bonus_mp_max: 0, resistencia: 0 });
     const [addingItem, setAddingItem] = useState(false);
     const fileRef = useRef(null);
     const galleryFileRef = useRef(null);
@@ -1847,7 +1885,15 @@ function MapView({ profile, toast, goto, setActionLocation, openCharacter }) {
             }
         }
     }
-    useEffect(() => { load(); }, []);
+    useEffect(() => {
+        load();
+        const ch = supabase.channel('map_live')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'characters' }, load)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'map_locations' }, load)
+            .subscribe();
+        const poll = setInterval(load, 2000);
+        return () => { supabase.removeChannel(ch); clearInterval(poll); };
+    }, []);
     async function loadEvents(locationId) {
         const { data } = await supabase.from('story_posts').select('*').eq('location_id', locationId).order('created_at', { ascending: false });
         setEvents(data || []);
@@ -1863,14 +1909,14 @@ function MapView({ profile, toast, goto, setActionLocation, openCharacter }) {
     async function addShopItem() {
         if (!newItem.name.trim() || !selected)
             return;
-        const { error } = await supabase.from('items').insert(Object.assign(Object.assign({}, newItem), { price: +newItem.price, heal_amount: +newItem.heal_amount || 0, location_id: selected.id }));
+        const { error } = await supabase.from('items').insert(Object.assign(Object.assign({}, newItem), { price: +newItem.price, heal_amount: +newItem.heal_amount || 0, bonus_forca: +newItem.bonus_forca || 0, bonus_agilidade: +newItem.bonus_agilidade || 0, bonus_inteligencia: +newItem.bonus_inteligencia || 0, bonus_hp_max: +newItem.bonus_hp_max || 0, bonus_mp_max: +newItem.bonus_mp_max || 0, resistencia: +newItem.resistencia || 0, location_id: selected.id }));
         if (error) {
             toast('Erro: ' + error.message);
             return;
         }
         toast('Item adicionado à loja.');
         setAddingItem(false);
-        setNewItem({ name: '', type: 'pocao', quality: 'comum', price: 10, heal_amount: 0, description: '' });
+        setNewItem({ name: '', type: 'pocao', quality: 'comum', price: 10, heal_amount: 0, description: '', bonus_forca: 0, bonus_agilidade: 0, bonus_inteligencia: 0, bonus_hp_max: 0, bonus_mp_max: 0, resistencia: 0 });
         loadShop(selected.id);
     }
     async function removeShopItem(id) {
@@ -1906,7 +1952,10 @@ function MapView({ profile, toast, goto, setActionLocation, openCharacter }) {
             await supabase.from('character_items').insert({ character_id: myChar.id, item_id: itemId, quantity: 1 });
         }
         toast('💰 Comprado! -' + price + ' moedas.');
+        // força reload geral
         load();
+        // dispara evento global que a ficha do personagem escuta
+        window.dispatchEvent(new CustomEvent('inventory-changed', { detail: { characterId: myChar.id } }));
     }
     async function uploadLocationImage(e) {
         const file = e.target.files[0];
@@ -2172,6 +2221,27 @@ function MapView({ profile, toast, goto, setActionLocation, openCharacter }) {
                                 newItem.type === 'pocao' && React.createElement("div", { className: "field" },
                                     React.createElement("label", null, "Cura quantos HP"),
                                     React.createElement("input", { type: "number", value: newItem.heal_amount, onChange: e => setNewItem(Object.assign(Object.assign({}, newItem), { heal_amount: e.target.value })) }))),
+                            (newItem.type === 'arma' || newItem.type === 'armadura' || newItem.type === 'ferramenta') && (React.createElement("div", null,
+                                React.createElement("div", { className: "attr-label", style: { marginBottom: 8 } }, "B\u00F4nus quando equipado"),
+                                React.createElement("div", { className: "grid2" },
+                                    React.createElement("div", { className: "field" },
+                                        React.createElement("label", null, "+For\u00E7a"),
+                                        React.createElement("input", { type: "number", value: newItem.bonus_forca, onChange: e => setNewItem(Object.assign(Object.assign({}, newItem), { bonus_forca: e.target.value })) })),
+                                    React.createElement("div", { className: "field" },
+                                        React.createElement("label", null, "+Agilidade"),
+                                        React.createElement("input", { type: "number", value: newItem.bonus_agilidade, onChange: e => setNewItem(Object.assign(Object.assign({}, newItem), { bonus_agilidade: e.target.value })) })),
+                                    React.createElement("div", { className: "field" },
+                                        React.createElement("label", null, "+Intelig\u00EAncia"),
+                                        React.createElement("input", { type: "number", value: newItem.bonus_inteligencia, onChange: e => setNewItem(Object.assign(Object.assign({}, newItem), { bonus_inteligencia: e.target.value })) })),
+                                    React.createElement("div", { className: "field" },
+                                        React.createElement("label", null, "+HP m\u00E1x"),
+                                        React.createElement("input", { type: "number", value: newItem.bonus_hp_max, onChange: e => setNewItem(Object.assign(Object.assign({}, newItem), { bonus_hp_max: e.target.value })) })),
+                                    React.createElement("div", { className: "field" },
+                                        React.createElement("label", null, "+MP m\u00E1x"),
+                                        React.createElement("input", { type: "number", value: newItem.bonus_mp_max, onChange: e => setNewItem(Object.assign(Object.assign({}, newItem), { bonus_mp_max: e.target.value })) })),
+                                    React.createElement("div", { className: "field" },
+                                        React.createElement("label", null, "Resist\u00EAncia (reduz dano)"),
+                                        React.createElement("input", { type: "number", value: newItem.resistencia, onChange: e => setNewItem(Object.assign(Object.assign({}, newItem), { resistencia: e.target.value })) }))))),
                             React.createElement("div", { className: "field" },
                                 React.createElement("label", null, "Descri\u00E7\u00E3o"),
                                 React.createElement("input", { value: newItem.description, onChange: e => setNewItem(Object.assign(Object.assign({}, newItem), { description: e.target.value })) })),
