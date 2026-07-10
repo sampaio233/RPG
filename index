@@ -2100,8 +2100,11 @@ function ActionsView({ profile, toast, actionLocation, clearActionLocation }) {
     const [lastRoll, setLastRoll] = useState(null);
     const [feed, setFeed] = useState(null);
     const [settings, setSettings] = useState(null);
+    const [dcInputs, setDcInputs] = useState({}); // { actionId: cdValue }
     async function loadFeed() {
-        const { data } = await supabase.from('actions').select('*, character:characters(name), player:profiles(display_name), location:map_locations(name)').order('created_at', { ascending: false }).limit(50);
+        const { data } = await supabase.from('actions')
+            .select('*, character:characters(name), player:profiles(display_name), location:map_locations(name)')
+            .order('created_at', { ascending: false }).limit(60);
         setFeed(data || []);
     }
     async function loadSettings() {
@@ -2116,59 +2119,79 @@ function ActionsView({ profile, toast, actionLocation, clearActionLocation }) {
         });
         loadSettings();
         loadFeed();
-        const channel = supabase.channel('actions_live')
+        const ch = supabase.channel('actions_live')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'actions' }, loadFeed)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, loadSettings)
             .subscribe();
-        return () => supabase.removeChannel(channel);
+        return () => supabase.removeChannel(ch);
     }, []);
     const currentTurn = settings ? settings.current_turn : 1;
     const myTurnAction = (feed && charId) ? feed.find(a => a.character_id === charId && a.turn === currentTurn) : null;
     const turnActions = feed ? feed.filter(a => a.turn === currentTurn) : [];
-    async function roll() {
+    // 1. Jogador descreve a ação (sem rolar ainda)
+    async function submitAction() {
         if (!charId) {
-            toast('Você precisa ter um personagem vinculado. Peça ao mestre.');
+            toast('Você precisa ter um personagem vinculado.');
             return;
         }
         if (!actionText.trim()) {
-            toast('Descreva a ação antes de rolar.');
+            toast('Descreva a ação antes de enviar.');
             return;
         }
         if (myTurnAction) {
-            toast('Seu personagem já agiu neste turno. Aguarde o mestre avançar o turno.');
+            toast('Você já enviou uma ação neste turno. Aguarde o mestre.');
             return;
         }
-        const char = myChars.find(c => c.id === charId);
-        const dieRoll = Math.floor(Math.random() * 20) + 1;
-        const modifier = attrModifier(char[attribute]);
-        const total = dieRoll + modifier;
-        const dc = (settings && settings.default_dc) || 13;
-        const success = total >= dc;
-        setRolling(true);
         const { error } = await supabase.from('actions').insert({
             character_id: charId, player_id: profile.id, action_text: actionText.trim(),
-            attribute, roll: dieRoll, modifier, total, dc, success, turn: currentTurn,
+            attribute, turn: currentTurn, dc: null, dc_set: false, status: 'pendente',
             location_id: actionLocation ? actionLocation.id : null,
         });
-        setRolling(false);
         if (error) {
             toast('Erro: ' + error.message);
             return;
         }
-        setLastRoll({ dieRoll, modifier, total, dc, success });
         setActionText('');
         clearActionLocation();
-        toast(success ? 'Sucesso!' : 'Fracasso...');
+        toast('Ação enviada! Aguarde o mestre definir a dificuldade.');
+    }
+    // 2. Mestre define a CD daquela ação
+    async function setDc(actionId) {
+        var val = parseInt(dcInputs[actionId] || (settings && settings.default_dc) || 13);
+        if (!val || val < 1) {
+            toast('CD inválida.');
+            return;
+        }
+        await supabase.from('actions').update({ dc: val, dc_set: true }).eq('id', actionId);
+        toast('CD ' + val + ' definida! O jogador já pode rolar.');
+        loadFeed();
+    }
+    // 3. Jogador rola o dado (só após CD definida)
+    async function roll(action) {
+        const char = myChars.find(c => c.id === charId);
+        if (!char)
+            return;
+        const dieRoll = Math.floor(Math.random() * 20) + 1;
+        const modifier = attrModifier(char[action.attribute] || char['forca']);
+        const total = dieRoll + modifier;
+        const success = total >= action.dc;
+        setRolling(true);
+        await supabase.from('actions').update({
+            roll: dieRoll, modifier, total, success, status: 'pendente',
+        }).eq('id', action.id);
+        setRolling(false);
+        setLastRoll({ dieRoll, modifier, total, dc: action.dc, success });
+        toast(success ? '🎲 ' + total + ' — Sucesso!' : '🎲 ' + total + ' — Fracasso...');
     }
     async function respond(actionId, text) {
         await supabase.from('actions').update({ admin_response: text }).eq('id', actionId);
-        toast('Resposta do mestre salva.');
+        toast('Resposta salva.');
         loadFeed();
     }
     async function setStatus(actionId, status, characterId) {
         await supabase.from('actions').update({ status }).eq('id', actionId);
         if (status === 'aprovada' && characterId) {
-            const reward = prompt('Quantas moedas dar de recompensa? (0 para nenhuma)', '10');
+            const reward = prompt('Moedas de recompensa? (0 pra nenhuma)', '10');
             const amount = parseInt(reward, 10);
             if (amount > 0) {
                 const { data: c } = await supabase.from('characters').select('coins').eq('id', characterId).single();
@@ -2181,15 +2204,27 @@ function ActionsView({ profile, toast, actionLocation, clearActionLocation }) {
         toast(status === 'aprovada' ? 'Ação aprovada.' : 'Ação rejeitada.');
         loadFeed();
     }
-    async function advanceTurn() {
-        const { error } = await supabase.from('settings').update({ current_turn: currentTurn + 1 }).eq('id', 1);
+    async function deleteAction(actionId) {
+        if (!confirm('Apagar esta ação de vez?'))
+            return;
+        const { error } = await supabase.from('actions').delete().eq('id', actionId);
         if (error) {
             toast('Erro: ' + error.message);
             return;
         }
+        toast('Ação apagada.');
+        loadFeed();
+    }
+    async function advanceTurn() {
+        await supabase.from('settings').update({ current_turn: currentTurn + 1 }).eq('id', 1);
         toast('Turno ' + (currentTurn + 1) + ' iniciado!');
     }
     function ActionCard({ a, highlight }) {
+        const dcVal = dcInputs[a.id] !== undefined ? dcInputs[a.id] : (a.dc || (settings && settings.default_dc) || 13);
+        const isMyAction = myChars.some(c => c.id === a.character_id);
+        const waitingForDC = !a.dc_set;
+        const waitingForRoll = a.dc_set && a.roll == null;
+        const rolled = a.roll != null;
         return (React.createElement("div", { className: "roll-card", style: highlight ? { borderColor: 'var(--cyan)' } : {} },
             React.createElement("div", { className: "story-meta" },
                 React.createElement("span", null,
@@ -2198,26 +2233,46 @@ function ActionsView({ profile, toast, actionLocation, clearActionLocation }) {
                     " \u00B7 ",
                     a.player ? a.player.display_name : '',
                     a.location ? ' · 📍 ' + a.location.name : ''),
-                !highlight && React.createElement("span", null, new Date(a.created_at).toLocaleString('pt-BR'))),
+                isAdmin && React.createElement("button", { className: "btn-danger", style: { padding: '2px 8px', fontSize: 11 }, onClick: () => deleteAction(a.id) }, "\uD83D\uDDD1")),
             React.createElement("p", { style: { fontSize: 14, marginBottom: 8 } }, a.action_text),
-            React.createElement("span", { className: "roll-result " + (a.success ? 'roll-success' : 'roll-fail'), style: { fontSize: 15, padding: '3px 10px' } },
-                a.roll,
-                " + ",
-                a.modifier,
-                " = ",
-                a.total,
-                " vs CD ",
+            React.createElement("span", { className: "muted", style: { fontSize: 12 } },
+                "Atributo: ",
+                a.attribute || 'força'),
+            isAdmin && waitingForDC && (React.createElement("div", { className: "admin-box", style: { marginTop: 12 } },
+                React.createElement("div", { className: "admin-box-title" }, "\u2699\uFE0F Definir dificuldade (CD) desta a\u00E7\u00E3o"),
+                React.createElement("div", { style: { display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' } },
+                    React.createElement("input", { type: "number", min: "1", max: "30", style: { width: 80 }, value: dcVal, onChange: e => setDcInputs(Object.assign(Object.assign({}, dcInputs), { [a.id]: e.target.value })), placeholder: "CD" }),
+                    React.createElement("button", { className: "btn-primary btn-sm", onClick: () => setDc(a.id) }, "Definir CD e liberar dado")))),
+            !isAdmin && waitingForDC && (React.createElement("div", { style: { marginTop: 10, fontSize: 13, color: 'var(--gold)' } }, "\u23F3 Aguardando o mestre definir a dificuldade...")),
+            waitingForRoll && isMyAction && !isAdmin && (React.createElement("div", { style: { marginTop: 12 } },
+                React.createElement("p", { style: { fontSize: 13, color: 'var(--cyan)', marginBottom: 8 } },
+                    "\uD83C\uDFB2 CD ",
+                    a.dc,
+                    " definida! Hora de rolar o dado."),
+                React.createElement("button", { className: "btn-primary btn-sm", onClick: () => roll(a), disabled: rolling }, rolling ? 'Rolando...' : 'Rolar d20'))),
+            waitingForRoll && !isMyAction && (React.createElement("div", { style: { marginTop: 10, fontSize: 13, color: 'var(--cyan)' } },
+                "\u2699\uFE0F CD ",
                 a.dc,
-                " \u2014 ",
-                a.success ? 'SUCESSO' : 'FRACASSO'),
-            React.createElement(StatusPill, { status: a.status || 'pendente' }),
+                " definida \u2014 aguardando jogador rolar o dado.")),
+            rolled && (React.createElement("div", { style: { marginTop: 10 } },
+                React.createElement("span", { className: "roll-result " + (a.success ? 'roll-success' : 'roll-fail'), style: { fontSize: 15 } },
+                    a.roll,
+                    " + ",
+                    a.modifier,
+                    " = ",
+                    a.total,
+                    " vs CD ",
+                    a.dc,
+                    " \u2014 ",
+                    a.success ? 'SUCESSO' : 'FRACASSO'),
+                React.createElement(StatusPill, { status: a.status || 'pendente' }))),
             a.admin_response && React.createElement("p", { style: { marginTop: 10, fontSize: 13.5, color: 'var(--cyan)' } },
                 "Mestre: ",
                 a.admin_response),
-            isAdmin && (React.createElement("div", { style: { display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' } },
+            isAdmin && rolled && (React.createElement("div", { style: { display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' } },
                 (a.status || 'pendente') !== 'aprovada' && React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => setStatus(a.id, 'aprovada', a.character_id) }, "\u2713 Aprovar"),
                 (a.status || 'pendente') !== 'rejeitada' && React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => setStatus(a.id, 'rejeitada', a.character_id) }, "\u2715 Rejeitar"))),
-            isAdmin && !a.admin_response && (React.createElement(AdminRespond, { onSave: (text) => respond(a.id, text) }))));
+            isAdmin && rolled && !a.admin_response && React.createElement(AdminRespond, { onSave: (text) => respond(a.id, text) })));
     }
     return (React.createElement("section", null,
         React.createElement("h2", { className: "section-title" },
@@ -2230,12 +2285,12 @@ function ActionsView({ profile, toast, actionLocation, clearActionLocation }) {
                     currentTurn),
                 React.createElement("span", { className: "muted", style: { fontSize: 13, marginLeft: 10 } },
                     turnActions.length,
-                    " a\u00E7\u00E3o(\u00F5es) registrada(s) neste turno")),
+                    " a\u00E7\u00E3o(\u00F5es) neste turno")),
             isAdmin && React.createElement("button", { className: "btn-primary btn-sm", onClick: advanceTurn },
                 "Avan\u00E7ar para o Turno ",
                 currentTurn + 1,
                 " \u2192")),
-        myChars.length > 0 && (React.createElement("div", { className: "composer" },
+        myChars.length > 0 && !myTurnAction && (React.createElement("div", { className: "composer" },
             actionLocation && (React.createElement("div", { style: { marginBottom: 14, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' } },
                 React.createElement("span", { style: { fontSize: 13, color: 'var(--gold)' } },
                     "\uD83D\uDCCD Agindo em: ",
@@ -2243,54 +2298,51 @@ function ActionsView({ profile, toast, actionLocation, clearActionLocation }) {
                 React.createElement("button", { className: "btn-ghost btn-sm", onClick: clearActionLocation }, "Remover local"))),
             React.createElement("div", { className: "grid2" },
                 React.createElement("div", { className: "field" },
-                    React.createElement("label", null, "Seu personagem"),
+                    React.createElement("label", null, "Personagem"),
                     React.createElement("select", { value: charId, onChange: e => setCharId(e.target.value) }, myChars.map(c => React.createElement("option", { key: c.id, value: c.id }, c.name)))),
                 React.createElement("div", { className: "field" },
-                    React.createElement("label", null, "Atributo usado na a\u00E7\u00E3o"),
-                    React.createElement("select", { value: attribute, onChange: e => setAttribute(e.target.value), disabled: !!myTurnAction },
+                    React.createElement("label", null, "Atributo usado"),
+                    React.createElement("select", { value: attribute, onChange: e => setAttribute(e.target.value) },
                         React.createElement("option", { value: "forca" }, "For\u00E7a"),
                         React.createElement("option", { value: "agilidade" }, "Agilidade"),
                         React.createElement("option", { value: "inteligencia" }, "Intelig\u00EAncia")))),
-            myTurnAction ? (React.createElement("div", { className: "empty-state" },
-                "Seu personagem j\u00E1 agiu neste turno. Resultado:",
-                ' ',
-                React.createElement("span", { className: "roll-result " + (myTurnAction.success ? 'roll-success' : 'roll-fail'), style: { marginLeft: 8 } },
-                    myTurnAction.roll,
-                    " + ",
-                    myTurnAction.modifier,
-                    " = ",
-                    myTurnAction.total,
-                    " vs CD ",
+            React.createElement("div", { className: "field" },
+                React.createElement("label", null, "O que seu personagem tenta fazer?"),
+                React.createElement("textarea", { rows: "2", value: actionText, onChange: e => setActionText(e.target.value), placeholder: "Ex: tentar escalar a muralha usando as pedras soltas..." })),
+            React.createElement("button", { className: "btn-primary", onClick: submitAction }, "Enviar a\u00E7\u00E3o"),
+            React.createElement("p", { className: "muted", style: { fontSize: 12, marginTop: 8 } }, "O mestre vai definir a dificuldade \u2014 voc\u00EA s\u00F3 rola o dado depois que ele liberar."))),
+        myChars.length > 0 && myTurnAction && (React.createElement("div", { className: "empty-state", style: { marginBottom: 24 } },
+            "Voc\u00EA j\u00E1 enviou sua a\u00E7\u00E3o neste turno.",
+            !myTurnAction.dc_set && ' Aguardando o mestre definir a CD.',
+            myTurnAction.dc_set && myTurnAction.roll == null && (React.createElement("span", null,
+                " ",
+                React.createElement("b", { style: { color: 'var(--cyan)' } },
+                    "CD ",
                     myTurnAction.dc,
-                    " \u2014 ",
-                    myTurnAction.success ? 'SUCESSO' : 'FRACASSO'),
-                React.createElement("br", null),
-                React.createElement("span", { className: "muted", style: { fontSize: 13 } }, "Aguarde o mestre avan\u00E7ar o turno para agir de novo."))) : (React.createElement(React.Fragment, null,
-                React.createElement("div", { className: "field" },
-                    React.createElement("label", null, "O que seu personagem tenta fazer?"),
-                    React.createElement("textarea", { rows: "2", value: actionText, onChange: e => setActionText(e.target.value), placeholder: "Ex: tentar escalar a muralha gelada..." })),
-                React.createElement("button", { className: "btn-primary", onClick: roll, disabled: rolling }, rolling ? 'Rolando...' : 'Rolar d20'))),
-            lastRoll && (React.createElement("div", { style: { marginTop: 16 } },
-                React.createElement("span", { className: "dice-face" }, lastRoll.dieRoll),
-                React.createElement("span", { style: { fontSize: 13, color: 'var(--muted)' } },
-                    "+ ",
-                    lastRoll.modifier,
-                    " (atributo) = ",
-                    lastRoll.total,
-                    " vs CD ",
-                    lastRoll.dc),
-                React.createElement("div", null,
-                    React.createElement("span", { className: "roll-result " + (lastRoll.success ? 'roll-success' : 'roll-fail') }, lastRoll.success ? 'SUCESSO' : 'FRACASSO')))))),
-        myChars.length === 0 && (React.createElement("div", { className: "empty-state", style: { marginBottom: 24 } }, "Voc\u00EA ainda n\u00E3o tem um personagem vinculado \u00E0 sua conta. Pe\u00E7a ao mestre para te atribuir um em Sistema \u2192 Personagens.")),
+                    " liberada! Clique na sua a\u00E7\u00E3o abaixo pra rolar o dado."))),
+            myTurnAction.roll != null && ' Resultado registrado, aguardando resposta do mestre.')),
+        myChars.length === 0 && (React.createElement("div", { className: "empty-state", style: { marginBottom: 24 } }, "Voc\u00EA ainda n\u00E3o tem um personagem vinculado. Pe\u00E7a ao mestre para te atribuir um em Sistema \u2192 Personagens.")),
+        lastRoll && (React.createElement("div", { className: "roll-card", style: { marginBottom: 20 } },
+            React.createElement("span", { className: "dice-face" }, lastRoll.dieRoll),
+            React.createElement("span", { style: { fontSize: 13, color: 'var(--muted)' } },
+                "+ ",
+                lastRoll.modifier,
+                " = ",
+                lastRoll.total,
+                " vs CD ",
+                lastRoll.dc),
+            React.createElement("div", { style: { marginTop: 8 } },
+                React.createElement("span", { className: "roll-result " + (lastRoll.success ? 'roll-success' : 'roll-fail') }, lastRoll.success ? 'SUCESSO!' : 'FRACASSO...')))),
         React.createElement("h3", { style: { fontFamily: 'var(--font-display)', fontSize: 17, marginBottom: 14, marginTop: 26 } },
-            "Resumo do Turno ",
-            currentTurn),
+            "Turno ",
+            currentTurn,
+            " \u2014 a\u00E7\u00F5es"),
         turnActions.length === 0 && React.createElement("div", { className: "empty-state" }, "Ningu\u00E9m agiu neste turno ainda."),
         turnActions.map(a => React.createElement(ActionCard, { key: a.id, a: a, highlight: true })),
         React.createElement("h3", { style: { fontFamily: 'var(--font-display)', fontSize: 17, marginBottom: 14, marginTop: 26 } }, "Hist\u00F3rico completo"),
         feed === null && React.createElement("p", { className: "loading" }, "Carregando..."),
-        feed && feed.length === 0 && React.createElement("div", { className: "empty-state" }, "Nenhuma a\u00E7\u00E3o registrada ainda."),
-        feed && feed.map(a => React.createElement(ActionCard, { key: a.id, a: a, highlight: false }))));
+        feed && feed.filter(a => a.turn !== currentTurn).length === 0 && React.createElement("div", { className: "empty-state" }, "Nenhuma a\u00E7\u00E3o anterior."),
+        feed && feed.filter(a => a.turn !== currentTurn).map(a => React.createElement(ActionCard, { key: a.id, a: a, highlight: false }))));
 }
 function AdminRespond({ onSave }) {
     const [text, setText] = useState('');
