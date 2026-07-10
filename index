@@ -684,6 +684,7 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
     const [actionHistory, setActionHistory] = useState([]);
     const [classes, setClasses] = useState([]);
     const [inventory, setInventory] = useState([]);
+    const [purchaseRequests, setPurchaseRequests] = useState([]);
     const [originStory, setOriginStory] = useState(char.origin_story || '');
     const [ownerEdit, setOwnerEdit] = useState(false);
     const [ownerForm, setOwnerForm] = useState({ name: char.name, appearance: char.appearance || '', bio_public: char.bio_public || '' });
@@ -696,10 +697,15 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
         supabase.from('actions').select('*, location:map_locations(name)').eq('character_id', char.id).order('created_at', { ascending: false }).limit(20).then(({ data }) => setActionHistory(data || []));
         supabase.from('classes').select('*').order('tier').then(({ data }) => setClasses(data || []));
         loadInventory();
+        loadPurchaseRequests();
     }, [char.id]);
     async function loadInventory() {
         const { data } = await supabase.from('character_items').select('*, item:items(*)').eq('character_id', char.id);
         setInventory(data || []);
+    }
+    async function loadPurchaseRequests() {
+        const { data } = await supabase.from('purchase_requests').select('*, item:items(name,type)').eq('character_id', char.id).order('created_at', { ascending: false }).limit(10);
+        setPurchaseRequests(data || []);
     }
     async function useItem(itemId) {
         const { error } = await supabase.rpc('use_item', { p_character_id: char.id, p_item_id: itemId });
@@ -1016,7 +1022,15 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
                             " \u00D7 ",
                             inv.quantity),
                         React.createElement("div", { className: "skill-req" }, inv.item.description)),
-                    inv.item.type === 'pocao' && (isOwner || isAdmin) && (React.createElement("button", { className: "btn-primary btn-sm", onClick: () => useItem(inv.item.id) }, "Usar"))))))),
+                    inv.item.type === 'pocao' && (isOwner || isAdmin) && (React.createElement("button", { className: "btn-primary btn-sm", onClick: () => useItem(inv.item.id) }, "Usar"))))),
+                purchaseRequests.filter(p => p.status === 'pendente').length > 0 && (React.createElement(React.Fragment, null,
+                    React.createElement("div", { className: "attr-label", style: { marginTop: 16, marginBottom: 8 } }, "Pedidos de compra pendentes"),
+                    purchaseRequests.filter(p => p.status === 'pendente').map(p => (React.createElement("div", { key: p.id, style: { fontSize: 13, color: 'var(--gold)', marginBottom: 6 } },
+                        "\u23F3 ",
+                        p.item ? p.item.name : 'item',
+                        " \u2014 \uD83D\uDCB0",
+                        p.price,
+                        " (aguardando o mestre)"))))))),
             tab === 'historico' && (React.createElement("div", { className: "tab-panel" },
                 actionHistory.length === 0 && React.createElement("p", { className: "muted" }, "Nenhuma a\u00E7\u00E3o registrada ainda para este personagem."),
                 actionHistory.map(a => (React.createElement("div", { key: a.id, className: "roll-card" },
@@ -1129,10 +1143,21 @@ function CharactersView({ profile, toast, initialOpenId, clearInitialOpenId }) {
         setChars(data || []);
         const { data: cls } = await supabase.from('classes').select('*').is('evolves_from_id', null).order('name');
         setClasses(cls || []);
-        const { data: locs } = await supabase.from('map_locations').select('id,name').order('name');
+        const { data: locs } = await supabase.from('map_locations').select('*').order('name');
         setLocations(locs || []);
     }
     useEffect(() => { load(); }, []);
+    const [previewLocId, setPreviewLocId] = useState(null);
+    const [previewImages, setPreviewImages] = useState([]);
+    async function togglePreview(locId) {
+        if (previewLocId === locId) {
+            setPreviewLocId(null);
+            return;
+        }
+        setPreviewLocId(locId);
+        const { data } = await supabase.from('location_images').select('*').eq('location_id', locId);
+        setPreviewImages(data || []);
+    }
     async function createChar() {
         if (!newName.trim())
             return;
@@ -1206,6 +1231,17 @@ function CharactersView({ profile, toast, initialOpenId, clearInitialOpenId }) {
                 React.createElement("select", { value: newBirthLocation, onChange: e => setNewBirthLocation(e.target.value) },
                     React.createElement("option", { value: "" }, "\u2014 escolher depois com o mestre \u2014"),
                     locations.map(l => React.createElement("option", { key: l.id, value: l.id }, l.name)))),
+            locations.length > 0 && (React.createElement("div", { className: "field" },
+                React.createElement("label", null, "Conhe\u00E7a os lugares antes de escolher"),
+                React.createElement("div", { style: { display: 'flex', flexDirection: 'column', gap: 6 } }, locations.map(l => (React.createElement("div", { key: l.id },
+                    React.createElement("button", { type: "button", className: "skill-chip", style: { width: '100%', textAlign: 'left' }, onClick: () => togglePreview(l.id) },
+                        (LOCATION_TYPES[l.type] || LOCATION_TYPES.cidade).icon,
+                        " ",
+                        l.name),
+                    previewLocId === l.id && (React.createElement("div", { style: { padding: '10px 14px', background: 'var(--panel)', borderRadius: '0 0 10px 10px', fontSize: 13 } },
+                        React.createElement("p", { style: { color: 'var(--muted)', marginBottom: 8 } }, l.description || 'Sem descrição ainda.'),
+                        l.current_story && React.createElement("p", { style: { marginBottom: 8 } }, l.current_story),
+                        previewImages.length > 0 && (React.createElement("div", { style: { display: 'flex', gap: 6, flexWrap: 'wrap' } }, previewImages.map(img => React.createElement("img", { key: img.id, src: img.image_url, alt: "", style: { width: 60, height: 60, objectFit: 'cover', borderRadius: 6 } })))))))))))),
             React.createElement("div", { className: "field" },
                 React.createElement("label", null, "Hist\u00F3ria de origem"),
                 React.createElement("textarea", { rows: "4", value: newOriginStory, onChange: e => setNewOriginStory(e.target.value), placeholder: "De onde ele vem, como cresceu, o que o trouxe at\u00E9 aqui..." })),
@@ -1263,6 +1299,7 @@ function MapView({ profile, toast, goto, setActionLocation, openCharacter }) {
     const [images, setImages] = useState([]);
     const [shopItems, setShopItems] = useState([]);
     const [myChar, setMyChar] = useState(null);
+    const [unlockedIds, setUnlockedIds] = useState([]);
     const [settings, setSettings] = useState(null);
     const [selected, setSelected] = useState(null);
     const [editMode, setEditMode] = useState(false);
@@ -1286,6 +1323,10 @@ function MapView({ profile, toast, goto, setActionLocation, openCharacter }) {
             const { data: mc } = await supabase.from('characters').select('*').eq('owner_id', profile.id).eq('status', 'aprovado').maybeSingle();
             setMyChar(mc || null);
             setCharacters(mc ? [mc] : []);
+            if (mc) {
+                const { data: unlocked } = await supabase.from('character_unlocked_locations').select('location_id').eq('character_id', mc.id);
+                setUnlockedIds((unlocked || []).map(u => u.location_id));
+            }
         }
     }
     useEffect(() => { load(); }, []);
@@ -1324,13 +1365,12 @@ function MapView({ profile, toast, goto, setActionLocation, openCharacter }) {
             toast('Você precisa ter um personagem aprovado para comprar.');
             return;
         }
-        const { error } = await supabase.rpc('buy_item', { p_character_id: myChar.id, p_item_id: itemId });
+        const { error } = await supabase.rpc('request_purchase', { p_character_id: myChar.id, p_item_id: itemId });
         if (error) {
             toast('Erro: ' + error.message);
             return;
         }
-        toast('Comprado!');
-        load();
+        toast('Pedido de compra enviado! Aguardando aprovação do mestre.');
     }
     async function uploadLocationImage(e) {
         const file = e.target.files[0];
@@ -1438,7 +1478,8 @@ function MapView({ profile, toast, goto, setActionLocation, openCharacter }) {
         : {};
     const presentChars = selected ? characters.filter(c => c.current_location_id === selected.id) : [];
     const unassignedChars = characters.filter(c => !selected || c.current_location_id !== selected.id);
-    const canAccessSelected = isAdmin || (selected && myChar && myChar.current_location_id === selected.id);
+    const canAccessSelected = isAdmin || (selected && unlockedIds.includes(selected.id));
+    const isHereNow = isAdmin || (selected && myChar && myChar.current_location_id === selected.id);
     return (React.createElement("section", null,
         React.createElement("h2", { className: "section-title" },
             React.createElement("span", { className: "tag" }, "03"),
@@ -1503,7 +1544,7 @@ function MapView({ profile, toast, goto, setActionLocation, openCharacter }) {
                         " ",
                         (LOCATION_TYPES[selected.type] || LOCATION_TYPES.cidade).label),
                     React.createElement("h3", { className: "map-info-title" }, selected.name),
-                    React.createElement("p", { className: "muted", style: { fontSize: 13.5, marginTop: 10 } }, "Seu personagem n\u00E3o est\u00E1 aqui. Voc\u00EA s\u00F3 pode ver os detalhes do local onde ele se encontra no momento."))),
+                    React.createElement("p", { className: "muted", style: { fontSize: 13.5, marginTop: 10 } }, "Seu personagem ainda n\u00E3o esteve aqui. Visite este local para desbloquear a hist\u00F3ria, fotos e a loja dele."))),
                 selected && !creatingAt && canAccessSelected && (!editingLoc || editingLoc.id !== selected.id) && (React.createElement("div", null,
                     React.createElement("p", { className: "map-info-tag" },
                         (LOCATION_TYPES[selected.type] || LOCATION_TYPES.cidade).icon,
@@ -1539,6 +1580,7 @@ function MapView({ profile, toast, goto, setActionLocation, openCharacter }) {
                             ev.content.length > 80 ? '...' : ''))))),
                     React.createElement("div", { style: { marginBottom: 14 } },
                         React.createElement("div", { className: "attr-label", style: { marginBottom: 6 } }, "Loja"),
+                        !isAdmin && !isHereNow && shopItems.length > 0 && (React.createElement("p", { className: "muted", style: { fontSize: 12, marginBottom: 8 } }, "Voc\u00EA est\u00E1 vendo o cat\u00E1logo, mas s\u00F3 pode comprar quando seu personagem estiver aqui de verdade.")),
                         shopItems.length === 0 && React.createElement("p", { className: "muted", style: { fontSize: 13 } }, "Nenhum item \u00E0 venda aqui."),
                         shopItems.map(it => (React.createElement("div", { key: it.id, style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 12px', marginBottom: 6 } },
                             React.createElement("div", null,
@@ -1555,7 +1597,7 @@ function MapView({ profile, toast, goto, setActionLocation, openCharacter }) {
                                 React.createElement("span", { style: { fontSize: 13, color: 'var(--gold)' } },
                                     "\uD83D\uDCB0",
                                     it.price),
-                                !isAdmin && React.createElement("button", { className: "btn-primary btn-sm", onClick: () => buyItem(it.id) }, "Comprar"),
+                                !isAdmin && isHereNow && React.createElement("button", { className: "btn-primary btn-sm", onClick: () => buyItem(it.id) }, "Pedir compra"),
                                 isAdmin && React.createElement("button", { className: "btn-danger", onClick: () => removeShopItem(it.id) }, "\u2715"))))),
                         isAdmin && !addingItem && React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => setAddingItem(true) }, "+ Adicionar item \u00E0 loja"),
                         isAdmin && addingItem && (React.createElement("div", { style: { marginTop: 8 } },
@@ -1828,6 +1870,7 @@ function SystemView({ profile, toast }) {
     const [profiles, setProfiles] = useState([]);
     const [chars, setChars] = useState([]);
     const [settings, setSettings] = useState(null);
+    const [purchaseRequests, setPurchaseRequests] = useState([]);
     async function load() {
         const { data: p } = await supabase.from('profiles').select('*').order('created_at');
         setProfiles(p || []);
@@ -1835,8 +1878,19 @@ function SystemView({ profile, toast }) {
         setChars(c || []);
         const { data: s } = await supabase.from('settings').select('*').eq('id', 1).single();
         setSettings(s);
+        const { data: pr } = await supabase.from('purchase_requests').select('*, item:items(name), character:characters(name)').eq('status', 'pendente').order('created_at');
+        setPurchaseRequests(pr || []);
     }
     useEffect(() => { load(); }, []);
+    async function resolvePurchase(id, approve) {
+        const { error } = await supabase.rpc('resolve_purchase', { p_request_id: id, p_approve: approve });
+        if (error) {
+            toast('Erro: ' + error.message);
+            return;
+        }
+        toast(approve ? 'Compra aprovada!' : 'Compra recusada.');
+        load();
+    }
     async function assignOwner(charId, ownerId) {
         await supabase.from('characters').update({ owner_id: ownerId || null }).eq('id', charId);
         toast('Vínculo atualizado.');
@@ -1856,6 +1910,19 @@ function SystemView({ profile, toast }) {
         React.createElement("h2", { className: "section-title" },
             React.createElement("span", { className: "tag" }, "05"),
             " Painel do Mestre"),
+        purchaseRequests.length > 0 && (React.createElement(React.Fragment, null,
+            React.createElement("h3", { style: { fontFamily: 'var(--font-display)', fontSize: 16, marginBottom: 12 } }, "Compras pendentes"),
+            React.createElement("div", { style: { marginBottom: 28 } }, purchaseRequests.map(pr => (React.createElement("div", { key: pr.id, className: "roll-card", style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 } },
+                React.createElement("div", { style: { fontSize: 14 } },
+                    React.createElement("b", null, pr.character ? pr.character.name : '—'),
+                    " quer comprar ",
+                    React.createElement("b", null, pr.item ? pr.item.name : '—'),
+                    React.createElement("span", { style: { color: 'var(--gold)', marginLeft: 8 } },
+                        "\uD83D\uDCB0",
+                        pr.price)),
+                React.createElement("div", { style: { display: 'flex', gap: 8 } },
+                    React.createElement("button", { className: "btn-primary btn-sm", onClick: () => resolvePurchase(pr.id, true) }, "\u2713 Aprovar"),
+                    React.createElement("button", { className: "btn-danger", onClick: () => resolvePurchase(pr.id, false) }, "\u2715 Recusar")))))))),
         React.createElement("h3", { style: { fontFamily: 'var(--font-display)', fontSize: 16, marginBottom: 12 } }, "Dificuldade padr\u00E3o dos testes"),
         React.createElement("div", { style: { display: 'flex', gap: 10, alignItems: 'center', marginBottom: 28 } },
             React.createElement("input", { type: "number", style: { width: 90 }, defaultValue: settings ? settings.default_dc : 13, onBlur: e => saveDc(+e.target.value) }),
