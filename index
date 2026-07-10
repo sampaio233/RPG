@@ -2142,7 +2142,7 @@ function ActionsView({ profile, toast, actionLocation, clearActionLocation }) {
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'settings' }, loadSettings)
             .subscribe();
         // polling de segurança: garante que ações novas apareçam mesmo se o realtime falhar
-        const poll = setInterval(loadFeed, 5000);
+        const poll = setInterval(loadFeed, 3000);
         return () => { supabase.removeChannel(ch); clearInterval(poll); };
     }, []);
     const currentTurn = settings ? settings.current_turn : 1;
@@ -2188,20 +2188,29 @@ function ActionsView({ profile, toast, actionLocation, clearActionLocation }) {
     }
     // 3. Jogador rola o dado (só após CD definida)
     async function roll(action) {
+        if (action.roll != null) {
+            toast('Você já rolou o dado para esta ação.');
+            return;
+        }
         const char = myChars.find(c => c.id === charId);
         if (!char)
             return;
+        setRolling(true);
         const dieRoll = Math.floor(Math.random() * 20) + 1;
         const modifier = attrModifier(char[action.attribute] || char['forca']);
         const total = dieRoll + modifier;
         const success = total >= action.dc;
-        setRolling(true);
-        await supabase.from('actions').update({
+        const { error } = await supabase.from('actions').update({
             roll: dieRoll, modifier, total, success, status: 'pendente',
         }).eq('id', action.id);
         setRolling(false);
+        if (error) {
+            toast('Erro: ' + error.message);
+            return;
+        }
         setLastRoll({ dieRoll, modifier, total, dc: action.dc, success });
         toast(success ? '🎲 ' + total + ' — Sucesso!' : '🎲 ' + total + ' — Fracasso...');
+        loadFeed(); // força reload imediato pra mestre ver na hora
     }
     async function respond(actionId, text) {
         await supabase.from('actions').update({ admin_response: text }).eq('id', actionId);
@@ -2273,7 +2282,8 @@ function ActionsView({ profile, toast, actionLocation, clearActionLocation }) {
                     "\uD83C\uDFB2 CD ",
                     a.dc,
                     " definida! Hora de rolar o dado."),
-                React.createElement("button", { className: "btn-primary btn-sm", onClick: () => roll(a), disabled: rolling }, rolling ? 'Rolando...' : 'Rolar d20'))),
+                React.createElement("button", { className: "btn-primary btn-sm", onClick: () => roll(a), disabled: rolling }, rolling ? '🎲 Rolando...' : 'Rolar d20 →'),
+                React.createElement("p", { className: "muted", style: { fontSize: 11, marginTop: 6 } }, "Voc\u00EA s\u00F3 pode rolar uma vez."))),
             waitingForRoll && !isMyAction && (React.createElement("div", { style: { marginTop: 10, fontSize: 13, color: 'var(--cyan)' } },
                 "\u2699\uFE0F CD ",
                 a.dc,
