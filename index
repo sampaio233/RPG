@@ -1061,12 +1061,15 @@ function CharactersView({ profile, toast, initialOpenId, clearInitialOpenId }) {
     const isAdmin = profile.role === 'admin';
     const [chars, setChars] = useState(null);
     const [classes, setClasses] = useState([]);
+    const [locations, setLocations] = useState([]);
     const [openId, setOpenId] = useState(null);
     const [creating, setCreating] = useState(false);
     const [newName, setNewName] = useState('');
     const [newCategory, setNewCategory] = useState('principal');
     const [newAppearance, setNewAppearance] = useState('');
     const [newClassId, setNewClassId] = useState('');
+    const [newOriginStory, setNewOriginStory] = useState('');
+    const [newBirthLocation, setNewBirthLocation] = useState('');
     useEffect(() => {
         if (initialOpenId) {
             setOpenId(initialOpenId);
@@ -1078,6 +1081,8 @@ function CharactersView({ profile, toast, initialOpenId, clearInitialOpenId }) {
         setChars(data || []);
         const { data: cls } = await supabase.from('classes').select('*').is('evolves_from_id', null).order('name');
         setClasses(cls || []);
+        const { data: locs } = await supabase.from('map_locations').select('id,name').order('name');
+        setLocations(locs || []);
     }
     useEffect(() => { load(); }, []);
     async function createChar() {
@@ -1092,6 +1097,8 @@ function CharactersView({ profile, toast, initialOpenId, clearInitialOpenId }) {
             payload.owner_id = profile.id;
             payload.appearance = newAppearance.trim();
             payload.class_id = newClassId || null;
+            payload.origin_story = newOriginStory.trim() || null;
+            payload.current_location_id = newBirthLocation || null;
         }
         const { error } = await supabase.from('characters').insert(payload);
         if (error) {
@@ -1101,6 +1108,8 @@ function CharactersView({ profile, toast, initialOpenId, clearInitialOpenId }) {
         setNewName('');
         setNewAppearance('');
         setNewClassId('');
+        setNewOriginStory('');
+        setNewBirthLocation('');
         setCreating(false);
         toast(isAdmin ? 'Personagem criado.' : 'Personagem enviado! Aguarde a aprovação do mestre.');
         load();
@@ -1127,7 +1136,7 @@ function CharactersView({ profile, toast, initialOpenId, clearInitialOpenId }) {
             React.createElement("span", { className: "tag" }, "02"),
             " Personagens"),
         !isAdmin && !myChar && (React.createElement("div", { className: "composer" },
-            React.createElement("p", { style: { marginBottom: 14, fontSize: 14 } }, "Voc\u00EA ainda n\u00E3o tem um personagem. Crie o seu abaixo \u2014 o mestre vai revisar, escrever sua hist\u00F3ria de origem e definir onde ele nasce antes de liberar."),
+            React.createElement("p", { style: { marginBottom: 14, fontSize: 14 } }, "Voc\u00EA ainda n\u00E3o tem um personagem. Crie o seu abaixo \u2014 escreva a hist\u00F3ria dele e escolha onde nasceu no mapa. O mestre revisa e pode ajustar antes de liberar."),
             React.createElement("div", { className: "grid2" },
                 React.createElement("div", { className: "field" },
                     React.createElement("label", null, "Nome do personagem"),
@@ -1143,6 +1152,14 @@ function CharactersView({ profile, toast, initialOpenId, clearInitialOpenId }) {
             React.createElement("div", { className: "field" },
                 React.createElement("label", null, "Apar\u00EAncia"),
                 React.createElement("textarea", { rows: "2", value: newAppearance, onChange: e => setNewAppearance(e.target.value), placeholder: "Como seu personagem se parece..." })),
+            React.createElement("div", { className: "field" },
+                React.createElement("label", null, "Onde ele nasceu (no mapa)"),
+                React.createElement("select", { value: newBirthLocation, onChange: e => setNewBirthLocation(e.target.value) },
+                    React.createElement("option", { value: "" }, "\u2014 escolher depois com o mestre \u2014"),
+                    locations.map(l => React.createElement("option", { key: l.id, value: l.id }, l.name)))),
+            React.createElement("div", { className: "field" },
+                React.createElement("label", null, "Hist\u00F3ria de origem"),
+                React.createElement("textarea", { rows: "4", value: newOriginStory, onChange: e => setNewOriginStory(e.target.value), placeholder: "De onde ele vem, como cresceu, o que o trouxe at\u00E9 aqui..." })),
             React.createElement("button", { className: "btn-primary", onClick: createChar }, "Criar personagem"))),
         !isAdmin && myChar && myChar.status === 'pendente_aprovacao' && (React.createElement("div", { className: "empty-state", style: { marginBottom: 20, borderColor: 'var(--gold)', color: 'var(--gold)' } },
             "\u23F3 Seu personagem ",
