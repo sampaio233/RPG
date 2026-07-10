@@ -424,6 +424,185 @@ function AppearanceMenu() {
 /* ============================================================
    RAÇAS — fixa desde a criação, separada da Classe
    ============================================================ */
+/* ============================================================
+   CLÃS & GUILDAS — organizações com história, banner e membros
+   ============================================================ */
+function GuildsView({ profile, toast }) {
+    const isAdmin = profile.role === 'admin';
+    const [guilds, setGuilds] = useState(null);
+    const [characters, setCharacters] = useState([]);
+    const [creating, setCreating] = useState(false);
+    const [form, setForm] = useState({ name: '', type: 'guilda', description: '', history: '', icon: '🛡️' });
+    const [editingId, setEditingId] = useState(null);
+    const [openId, setOpenId] = useState(null);
+    const [images, setImages] = useState([]);
+    const bannerRef = useRef(null);
+    const galleryRef = useRef(null);
+    async function load() {
+        const { data } = await supabase.from('guilds').select('*').order('name');
+        setGuilds(data || []);
+        const { data: chars } = await supabase.from('characters').select('id,name,avatar_url,rank,guild_id').eq('status', 'aprovado');
+        setCharacters(chars || []);
+    }
+    useEffect(() => { load(); }, []);
+    async function loadImages(guildId) {
+        const { data } = await supabase.from('guild_images').select('*').eq('guild_id', guildId);
+        setImages(data || []);
+    }
+    function startCreate() {
+        setForm({ name: '', type: 'guilda', description: '', history: '', icon: '🛡️' });
+        setEditingId(null);
+        setCreating(true);
+    }
+    function startEdit(g) {
+        setForm(Object.assign({}, g));
+        setEditingId(g.id);
+        setCreating(true);
+    }
+    async function save() {
+        if (!form.name.trim()) {
+            toast('Digite um nome.');
+            return;
+        }
+        const payload = { name: form.name.trim(), type: form.type, description: form.description, history: form.history, icon: form.icon || '🛡️' };
+        const { error } = editingId
+            ? await supabase.from('guilds').update(payload).eq('id', editingId)
+            : await supabase.from('guilds').insert(payload);
+        if (error) {
+            toast('Erro: ' + error.message);
+            return;
+        }
+        toast('Salvo.');
+        setCreating(false);
+        load();
+    }
+    async function remove(id) {
+        if (!confirm('Apagar isso? Personagens ligados a ela ficarão sem clã/guilda.'))
+            return;
+        await supabase.from('characters').update({ guild_id: null }).eq('guild_id', id);
+        const { error } = await supabase.from('guilds').delete().eq('id', id);
+        if (error) {
+            toast('Erro: ' + error.message);
+            return;
+        }
+        toast('Removido.');
+        setOpenId(null);
+        load();
+    }
+    async function uploadBanner(e) {
+        const file = e.target.files[0];
+        if (!file || !openId)
+            return;
+        const path = 'guilds/' + openId + '/banner_' + Date.now() + '_' + sanitizeFileName(file.name);
+        const { error: upErr } = await supabase.storage.from('maps').upload(path, file, { upsert: true });
+        if (upErr) {
+            toast('Erro no upload: ' + upErr.message);
+            return;
+        }
+        const { data } = supabase.storage.from('maps').getPublicUrl(path);
+        await supabase.from('guilds').update({ banner_url: data.publicUrl }).eq('id', openId);
+        toast('Banner atualizado.');
+        load();
+    }
+    async function uploadGalleryImage(e) {
+        const file = e.target.files[0];
+        if (!file || !openId)
+            return;
+        const path = 'guilds/' + openId + '/' + Date.now() + '_' + sanitizeFileName(file.name);
+        const { error: upErr } = await supabase.storage.from('maps').upload(path, file, { upsert: true });
+        if (upErr) {
+            toast('Erro no upload: ' + upErr.message);
+            return;
+        }
+        const { data } = supabase.storage.from('maps').getPublicUrl(path);
+        await supabase.from('guild_images').insert({ guild_id: openId, image_url: data.publicUrl });
+        toast('Foto adicionada.');
+        loadImages(openId);
+    }
+    const openGuild = guilds && guilds.find(g => g.id === openId);
+    const members = openId ? characters.filter(c => c.guild_id === openId) : [];
+    return (React.createElement("section", null,
+        React.createElement("h2", { className: "section-title" },
+            React.createElement("span", { className: "tag" }, "08"),
+            " Cl\u00E3s & Guildas"),
+        isAdmin && (React.createElement("div", { style: { marginBottom: 20 } },
+            !creating && React.createElement("button", { className: "btn-primary btn-sm", onClick: startCreate }, "+ Novo cl\u00E3/guilda"),
+            creating && (React.createElement("div", { className: "composer" },
+                React.createElement("div", { className: "grid2" },
+                    React.createElement("div", { className: "field" },
+                        React.createElement("label", null, "Nome"),
+                        React.createElement("input", { value: form.name, onChange: e => setForm(Object.assign(Object.assign({}, form), { name: e.target.value })), placeholder: "Ex: Ordem da Aurora" })),
+                    React.createElement("div", { className: "field" },
+                        React.createElement("label", null, "\u00CDcone (emoji)"),
+                        React.createElement("input", { value: form.icon, onChange: e => setForm(Object.assign(Object.assign({}, form), { icon: e.target.value })), placeholder: "\uD83D\uDEE1\uFE0F" })),
+                    React.createElement("div", { className: "field" },
+                        React.createElement("label", null, "Tipo"),
+                        React.createElement("select", { value: form.type, onChange: e => setForm(Object.assign(Object.assign({}, form), { type: e.target.value })) },
+                            React.createElement("option", { value: "guilda" }, "Guilda"),
+                            React.createElement("option", { value: "cla" }, "Cl\u00E3")))),
+                React.createElement("div", { className: "field" },
+                    React.createElement("label", null, "Descri\u00E7\u00E3o curta"),
+                    React.createElement("textarea", { rows: "2", value: form.description || '', onChange: e => setForm(Object.assign(Object.assign({}, form), { description: e.target.value })) })),
+                React.createElement("div", { className: "field" },
+                    React.createElement("label", null, "Hist\u00F3ria completa"),
+                    React.createElement("textarea", { rows: "5", value: form.history || '', onChange: e => setForm(Object.assign(Object.assign({}, form), { history: e.target.value })), placeholder: "Como surgiu, o que defende, rivalidades..." })),
+                React.createElement("div", { style: { display: 'flex', gap: 10 } },
+                    React.createElement("button", { className: "btn-primary btn-sm", onClick: save }, "Salvar"),
+                    React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => setCreating(false) }, "Cancelar")))))),
+        guilds === null && React.createElement("p", { className: "loading" }, "Carregando..."),
+        guilds && guilds.length === 0 && React.createElement("div", { className: "empty-state" }, "Nenhum cl\u00E3 ou guilda cadastrado ainda."),
+        React.createElement("div", { className: "char-grid" }, guilds && guilds.map(g => (React.createElement("div", { className: "char-card", key: g.id, onClick: () => { setOpenId(g.id); loadImages(g.id); } },
+            g.banner_url ? React.createElement("img", { className: "char-avatar", src: g.banner_url, alt: g.name }) : React.createElement("div", { className: "char-avatar-placeholder" }, g.icon),
+            React.createElement("div", { className: "char-card-body" },
+                React.createElement("div", { className: "card-top" },
+                    React.createElement("div", null,
+                        React.createElement("div", { className: "card-name" },
+                            g.icon,
+                            " ",
+                            g.name),
+                        React.createElement("div", { className: "card-power" }, g.type === 'cla' ? 'Clã' : 'Guilda'))),
+                React.createElement("p", { className: "card-desc" }, g.description || 'Sem descrição ainda.')))))),
+        openGuild && (React.createElement("div", { className: "overlay open", onClick: e => { if (e.target.classList.contains('overlay'))
+                setOpenId(null); } },
+            React.createElement("div", { className: "sheet" },
+                React.createElement("button", { className: "sheet-close", onClick: () => setOpenId(null) }, "\u2715"),
+                React.createElement("div", { className: "sheet-hero" },
+                    openGuild.banner_url
+                        ? React.createElement("img", { className: "sheet-hero-img", src: openGuild.banner_url, alt: openGuild.name })
+                        : React.createElement("div", { className: "sheet-hero-img sheet-hero-placeholder" }, openGuild.icon),
+                    React.createElement("div", { className: "sheet-hero-overlay" },
+                        React.createElement("div", null,
+                            React.createElement("div", { className: "sheet-name" },
+                                openGuild.icon,
+                                " ",
+                                openGuild.name),
+                            React.createElement("div", { className: "sheet-power" }, openGuild.type === 'cla' ? 'Clã' : 'Guilda'))),
+                    isAdmin && React.createElement("button", { className: "btn-primary btn-sm sheet-hero-upload", onClick: () => bannerRef.current.click() }, "\uD83D\uDDBC\uFE0F Trocar banner"),
+                    React.createElement("input", { type: "file", accept: "image/*", ref: bannerRef, style: { display: 'none' }, onChange: uploadBanner })),
+                React.createElement("p", { style: { marginBottom: 14, color: 'var(--muted)' } }, openGuild.description),
+                openGuild.history && React.createElement("p", { style: { marginBottom: 18, lineHeight: 1.7 } }, openGuild.history),
+                React.createElement("div", { style: { marginBottom: 18 } },
+                    React.createElement("div", { className: "attr-label", style: { marginBottom: 8 } }, "Galeria"),
+                    React.createElement("div", { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
+                        images.map(img => (React.createElement("img", { key: img.id, src: img.image_url, alt: "", style: { width: 76, height: 76, objectFit: 'cover', borderRadius: 8, cursor: 'pointer' }, onClick: () => window.open(img.image_url, '_blank') }))),
+                        images.length === 0 && React.createElement("p", { className: "muted", style: { fontSize: 13 } }, "Nenhuma foto ainda.")),
+                    isAdmin && (React.createElement(React.Fragment, null,
+                        React.createElement("button", { className: "btn-ghost btn-sm", style: { marginTop: 8 }, onClick: () => galleryRef.current.click() }, "+ Adicionar foto"),
+                        React.createElement("input", { type: "file", accept: "image/*", ref: galleryRef, style: { display: 'none' }, onChange: uploadGalleryImage })))),
+                React.createElement("div", { style: { marginBottom: 18 } },
+                    React.createElement("div", { className: "attr-label", style: { marginBottom: 8 } },
+                        "Membros (",
+                        members.length,
+                        ")"),
+                    members.length === 0 && React.createElement("p", { className: "muted", style: { fontSize: 13 } }, "Nenhum personagem faz parte ainda."),
+                    React.createElement("div", { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } }, members.map(c => (React.createElement("span", { key: c.id, style: { display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 20, padding: '4px 10px', fontSize: 12.5 } },
+                        React.createElement("span", { className: "rank-badge " + rankClass(c.rank), style: { width: 18, height: 18, fontSize: 9, borderRadius: 4 } },
+                            React.createElement("span", null, c.rank)),
+                        c.name))))),
+                isAdmin && (React.createElement("div", { style: { display: 'flex', gap: 10 } },
+                    React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => startEdit(openGuild) }, "Editar"),
+                    React.createElement("button", { className: "btn-danger", onClick: () => remove(openGuild.id) }, "Apagar"))))))));
+}
 function RacesView({ profile, toast }) {
     const isAdmin = profile.role === 'admin';
     const [races, setRaces] = useState(null);
@@ -660,7 +839,7 @@ function ClassesView({ profile, toast }) {
    ============================================================ */
 function Nav({ view, setView, profile, onLogout }) {
     const items = [
-        ['home', 'Home'], ['characters', 'Personagens'], ['classes', 'Classes'], ['races', 'Raças'], ['map', 'Mundo'], ['actions', 'Ações & Dados'],
+        ['home', 'Home'], ['characters', 'Personagens'], ['classes', 'Classes'], ['races', 'Raças'], ['guilds', 'Clãs & Guildas'], ['map', 'Mundo'], ['actions', 'Ações & Dados'],
     ];
     if (profile && profile.role === 'admin')
         items.push(['system', 'Sistema']);
@@ -788,11 +967,12 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
     const [actionHistory, setActionHistory] = useState([]);
     const [classes, setClasses] = useState([]);
     const [races, setRaces] = useState([]);
+    const [guilds, setGuilds] = useState([]);
     const [inventory, setInventory] = useState([]);
     const [purchaseRequests, setPurchaseRequests] = useState([]);
     const [originStory, setOriginStory] = useState(char.origin_story || '');
     const [ownerEdit, setOwnerEdit] = useState(false);
-    const [ownerForm, setOwnerForm] = useState({ name: char.name, appearance: char.appearance || '', bio_public: char.bio_public || '', class_id: char.class_id || '', race_id: char.race_id || '', current_location_id: char.current_location_id || '', origin_story: char.origin_story || '' });
+    const [ownerForm, setOwnerForm] = useState({ name: char.name, appearance: char.appearance || '', bio_public: char.bio_public || '', class_id: char.class_id || '', race_id: char.race_id || '', guild_id: char.guild_id || '', current_location_id: char.current_location_id || '', origin_story: char.origin_story || '' });
     const fileRef = useRef(null);
     useEffect(() => {
         supabase.from('skills').select('*').eq('character_id', char.id).order('depth').then(({ data }) => setSkills(data || []));
@@ -802,6 +982,7 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
         supabase.from('actions').select('*, location:map_locations(name)').eq('character_id', char.id).order('created_at', { ascending: false }).limit(20).then(({ data }) => setActionHistory(data || []));
         supabase.from('classes').select('*').order('tier').then(({ data }) => setClasses(data || []));
         supabase.from('races').select('*').order('name').then(({ data }) => setRaces(data || []));
+        supabase.from('guilds').select('*').order('name').then(({ data }) => setGuilds(data || []));
         loadInventory();
         loadPurchaseRequests();
     }, [char.id]);
@@ -840,7 +1021,7 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
     async function approveCharacter() {
         const { error } = await supabase.from('characters').update({
             status: 'aprovado', origin_story: originStory, current_location_id: form.current_location_id || char.current_location_id,
-            class_id: form.class_id || null, race_id: form.race_id || null,
+            class_id: form.class_id || null, race_id: form.race_id || null, guild_id: form.guild_id || null,
             rejection_reason: null,
         }).eq('id', char.id);
         if (error) {
@@ -865,6 +1046,7 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
         if (char.status !== 'aprovado') {
             payload.class_id = ownerForm.class_id || null;
             payload.race_id = ownerForm.race_id || null;
+            payload.guild_id = ownerForm.guild_id || null;
             payload.current_location_id = ownerForm.current_location_id || null;
             payload.origin_story = ownerForm.origin_story;
         }
@@ -917,7 +1099,7 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
             name: form.name, title: form.title, appearance: form.appearance, power: form.power,
             affiliation: form.affiliation, status: form.status, rank: form.rank, bio_public: form.bio_public,
             admin_notes: form.admin_notes, owner_id: form.owner_id || null, category: form.category || 'principal',
-            class_id: form.class_id || null, race_id: form.race_id || null,
+            class_id: form.class_id || null, race_id: form.race_id || null, guild_id: form.guild_id || null,
             forca: form.forca, agilidade: form.agilidade, inteligencia: form.inteligencia,
             hp_max: form.hp_max, mp_max: form.mp_max,
         }).eq('id', char.id);
@@ -1025,6 +1207,14 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
                             " ",
                             c.name)))),
                 React.createElement("div", { className: "field" },
+                    React.createElement("label", null, "Cl\u00E3 / Guilda"),
+                    React.createElement("select", { value: form.guild_id || '', onChange: e => setForm(Object.assign(Object.assign({}, form), { guild_id: e.target.value })) },
+                        React.createElement("option", { value: "" }, "\u2014 nenhum(a) \u2014"),
+                        guilds.map(g => React.createElement("option", { key: g.id, value: g.id },
+                            g.icon,
+                            " ",
+                            g.name)))),
+                React.createElement("div", { className: "field" },
                     React.createElement("label", null, "Local de nascimento"),
                     React.createElement("select", { value: form.current_location_id || '', onChange: e => setForm(Object.assign(Object.assign({}, form), { current_location_id: e.target.value })) },
                         React.createElement("option", { value: "" }, "\u2014 nenhum \u2014"),
@@ -1050,6 +1240,10 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
                     React.createElement("b", null, "Ra\u00E7a:"),
                     " ",
                     React.createElement("span", { className: "muted" }, (races.find(r => r.id === char.race_id) || {}).name || '—')),
+                React.createElement("p", { style: { marginTop: 8 } },
+                    React.createElement("b", null, "Cl\u00E3/Guilda:"),
+                    " ",
+                    React.createElement("span", { className: "muted" }, (guilds.find(g => g.id === char.guild_id) || {}).name || '—')),
                 React.createElement("p", { style: { marginTop: 8 } },
                     React.createElement("b", null, "Afilia\u00E7\u00E3o:"),
                     " ",
@@ -1106,6 +1300,14 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
                                         c.icon,
                                         " ",
                                         c.name)))),
+                            React.createElement("div", { className: "field" },
+                                React.createElement("label", null, "Cl\u00E3 / Guilda"),
+                                React.createElement("select", { value: ownerForm.guild_id, onChange: e => setOwnerForm(Object.assign(Object.assign({}, ownerForm), { guild_id: e.target.value })) },
+                                    React.createElement("option", { value: "" }, "\u2014 nenhum(a) \u2014"),
+                                    guilds.map(g => React.createElement("option", { key: g.id, value: g.id },
+                                        g.icon,
+                                        " ",
+                                        g.name)))),
                             React.createElement("div", { className: "field" },
                                 React.createElement("label", null, "Onde ele nasceu"),
                                 React.createElement("select", { value: ownerForm.current_location_id, onChange: e => setOwnerForm(Object.assign(Object.assign({}, ownerForm), { current_location_id: e.target.value })) },
@@ -1265,6 +1467,14 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
                                     " ",
                                     r.name)))),
                         React.createElement("div", { className: "field" },
+                            React.createElement("label", null, "Cl\u00E3 / Guilda"),
+                            React.createElement("select", { value: form.guild_id || '', onChange: e => setForm(Object.assign(Object.assign({}, form), { guild_id: e.target.value })) },
+                                React.createElement("option", { value: "" }, "\u2014 nenhum(a) \u2014"),
+                                guilds.map(g => React.createElement("option", { key: g.id, value: g.id },
+                                    g.icon,
+                                    " ",
+                                    g.name)))),
+                        React.createElement("div", { className: "field" },
                             React.createElement("label", null, "Rank"),
                             React.createElement("select", { value: form.rank, onChange: e => setForm(Object.assign(Object.assign({}, form), { rank: e.target.value })) },
                                 React.createElement("option", { value: "S" }, "S"),
@@ -1316,6 +1526,8 @@ function CharactersView({ profile, toast, initialOpenId, clearInitialOpenId }) {
     const [newAppearance, setNewAppearance] = useState('');
     const [newClassId, setNewClassId] = useState('');
     const [newRaceId, setNewRaceId] = useState('');
+    const [newGuildId, setNewGuildId] = useState('');
+    const [guilds, setGuilds] = useState([]);
     const [newOriginStory, setNewOriginStory] = useState('');
     const [newBirthLocation, setNewBirthLocation] = useState('');
     useEffect(() => {
@@ -1331,6 +1543,8 @@ function CharactersView({ profile, toast, initialOpenId, clearInitialOpenId }) {
         setClasses(cls || []);
         const { data: rcs } = await supabase.from('races').select('*').order('name');
         setRaces(rcs || []);
+        const { data: gld } = await supabase.from('guilds').select('*').order('name');
+        setGuilds(gld || []);
         const { data: locs } = await supabase.from('map_locations').select('*').order('name');
         setLocations(locs || []);
     }
@@ -1351,15 +1565,17 @@ function CharactersView({ profile, toast, initialOpenId, clearInitialOpenId }) {
             return;
         const payload = { name: newName.trim(), category: newCategory };
         if (isAdmin) {
-            // mestre pode criar personagem já aprovado, com classe e raça direto
+            // mestre pode criar personagem já aprovado, com classe, raça e guilda direto
             payload.class_id = newClassId || null;
             payload.race_id = newRaceId || null;
+            payload.guild_id = newGuildId || null;
         }
         else {
             payload.owner_id = profile.id;
             payload.appearance = newAppearance.trim();
             payload.class_id = newClassId || null;
             payload.race_id = newRaceId || null;
+            payload.guild_id = newGuildId || null;
             payload.origin_story = newOriginStory.trim() || null;
             payload.current_location_id = newBirthLocation || null;
         }
@@ -1372,6 +1588,7 @@ function CharactersView({ profile, toast, initialOpenId, clearInitialOpenId }) {
         setNewAppearance('');
         setNewClassId('');
         setNewRaceId('');
+        setNewGuildId('');
         setNewOriginStory('');
         setNewBirthLocation('');
         setCreating(false);
@@ -1421,7 +1638,15 @@ function CharactersView({ profile, toast, initialOpenId, clearInitialOpenId }) {
                         classes.map(c => React.createElement("option", { key: c.id, value: c.id },
                             c.icon,
                             " ",
-                            c.name))))),
+                            c.name)))),
+                React.createElement("div", { className: "field" },
+                    React.createElement("label", null, "Cl\u00E3 / Guilda"),
+                    React.createElement("select", { value: newGuildId, onChange: e => setNewGuildId(e.target.value) },
+                        React.createElement("option", { value: "" }, "\u2014 nenhum(a) \u2014"),
+                        guilds.map(g => React.createElement("option", { key: g.id, value: g.id },
+                            g.icon,
+                            " ",
+                            g.name))))),
             React.createElement("div", { className: "field" },
                 React.createElement("label", null, "Apar\u00EAncia"),
                 React.createElement("textarea", { rows: "2", value: newAppearance, onChange: e => setNewAppearance(e.target.value), placeholder: "Como seu personagem se parece..." })),
@@ -2245,6 +2470,7 @@ function App() {
             view === 'characters' && React.createElement(CharactersView, { profile: profile, toast: showToast, initialOpenId: openCharacterId, clearInitialOpenId: () => setOpenCharacterId(null) }),
             view === 'classes' && React.createElement(ClassesView, { profile: profile, toast: showToast }),
             view === 'races' && React.createElement(RacesView, { profile: profile, toast: showToast }),
+            view === 'guilds' && React.createElement(GuildsView, { profile: profile, toast: showToast }),
             view === 'map' && React.createElement(MapView, { profile: profile, toast: showToast, goto: setView, setActionLocation: setActionLocation, openCharacter: (id) => { setOpenCharacterId(id); setView('characters'); } }),
             view === 'actions' && React.createElement(ActionsView, { profile: profile, toast: showToast, actionLocation: actionLocation, clearActionLocation: () => setActionLocation(null) }),
             view === 'system' && profile.role === 'admin' && React.createElement(SystemView, { profile: profile, toast: showToast })),
