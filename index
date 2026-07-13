@@ -1001,6 +1001,11 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
     const [races, setRaces] = useState([]);
     const [guilds, setGuilds] = useState([]);
     const [inventory, setInventory] = useState([]);
+    const [trades, setTrades] = useState([]);
+    const [localChars, setLocalChars] = useState([]);
+    const [tradeForm, setTradeForm] = useState(null);
+    const [visibleTo, setVisibleTo] = useState([]); // personagens com permissão de ver
+    const [myCharId, setMyCharId] = useState(null); // personagem do usuário logado
     const [purchaseRequests, setPurchaseRequests] = useState([]);
     const [originStory, setOriginStory] = useState(char.origin_story || '');
     const [ownerEdit, setOwnerEdit] = useState(false);
@@ -1016,7 +1021,18 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
         supabase.from('races').select('*').order('name').then(({ data }) => setRaces(data || []));
         supabase.from('guilds').select('*').order('name').then(({ data }) => setGuilds(data || []));
         loadInventory();
+        loadTrades();
+        loadLocalChars();
         loadPurchaseRequests();
+        // personagem do usuário logado (pra checar permissão de ver)
+        supabase.from('characters').select('id').eq('owner_id', profile.id).eq('status', 'aprovado').maybeSingle().then(({ data }) => {
+            if (data)
+                setMyCharId(data.id);
+        });
+        // quem pode ver este personagem
+        supabase.from('character_visibility').select('viewer_char_id').eq('character_id', char.id).then(({ data }) => {
+            setVisibleTo((data || []).map(v => v.viewer_char_id));
+        });
         // realtime: mudanças aparecem na hora pra todos
         const ch = supabase.channel('sheet_' + char.id)
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'characters', filter: 'id=eq.' + char.id }, () => onChanged())
@@ -1025,7 +1041,7 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
             supabase.from('skills').select('*').eq('character_id', char.id).order('depth').then(({ data }) => setSkills(data || []));
         })
             .subscribe();
-        const poll = setInterval(() => { loadInventory(); }, 2000);
+        const poll = setInterval(() => { loadInventory(); loadTrades(); }, 2000);
         function onInvChanged(e) { if (e.detail && e.detail.characterId === char.id)
             loadInventory(); }
         window.addEventListener('inventory-changed', onInvChanged);
@@ -1034,6 +1050,24 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
     async function loadInventory() {
         const { data } = await supabase.from('character_items').select('*, item:items(*)').eq('character_id', char.id);
         setInventory(data || []);
+    }
+    async function loadTrades() {
+        const { data } = await supabase.from('trade_proposals')
+            .select('*, from_char:characters!from_character_id(name), to_char:characters!to_character_id(name), offer_item:character_items!offer_item_inv_id(item:items(name)), request_item:character_items!request_item_inv_id(item:items(name))')
+            .or('from_character_id.eq.' + char.id + ',to_character_id.eq.' + char.id)
+            .eq('status', 'pendente')
+            .order('created_at', { ascending: false });
+        setTrades(data || []);
+    }
+    async function loadLocalChars() {
+        if (!char.current_location_id)
+            return;
+        const { data } = await supabase.from('characters')
+            .select('id,name,owner_id')
+            .eq('current_location_id', char.current_location_id)
+            .eq('status', 'aprovado')
+            .neq('id', char.id);
+        setLocalChars(data || []);
     }
     async function loadPurchaseRequests() {
         const { data } = await supabase.from('purchase_requests').select('*, item:items(name,type)').eq('character_id', char.id).order('created_at', { ascending: false }).limit(10);
@@ -1301,35 +1335,67 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
             tab === 'sobre' && (React.createElement("div", { className: "tab-panel" },
                 isAdmin && (React.createElement("div", { style: { display: 'flex', justifyContent: 'flex-end', marginBottom: 14 } },
                     React.createElement("button", { className: "btn-danger", onClick: deleteCharacterAdmin }, "\uD83D\uDDD1\uFE0F Excluir este personagem"))),
-                React.createElement("p", null,
-                    React.createElement("b", null, "Ra\u00E7a:"),
-                    " ",
-                    React.createElement("span", { className: "muted" }, (races.find(r => r.id === char.race_id) || {}).name || '—')),
-                React.createElement("p", { style: { marginTop: 8 } },
-                    React.createElement("b", null, "Cl\u00E3/Guilda:"),
-                    " ",
-                    React.createElement("span", { className: "muted" }, (guilds.find(g => g.id === char.guild_id) || {}).name || '—')),
-                React.createElement("p", { style: { marginTop: 8 } },
-                    React.createElement("b", null, "Afilia\u00E7\u00E3o:"),
-                    " ",
-                    React.createElement("span", { className: "muted" }, char.affiliation || '—')),
-                React.createElement("p", { style: { marginTop: 8 } },
-                    React.createElement("b", null, "Status:"),
-                    " ",
-                    React.createElement("span", { className: "muted" }, char.status || '—')),
-                React.createElement("p", { style: { marginTop: 8 } },
-                    React.createElement("b", null, "Apar\u00EAncia:"),
-                    " ",
-                    React.createElement("span", { className: "muted" }, char.appearance || '—')),
-                React.createElement("p", { style: { marginTop: 8 } },
-                    React.createElement("b", null, "Local atual:"),
-                    " ",
-                    React.createElement("span", { className: "muted" }, (locations.find(l => l.id === char.current_location_id) || {}).name || 'Nenhum')),
-                char.origin_story && React.createElement("p", { style: { marginTop: 8 } },
-                    React.createElement("b", null, "Origem:"),
-                    " ",
-                    React.createElement("span", { className: "muted" }, char.origin_story)),
-                React.createElement("p", { style: { marginTop: 14 } }, char.bio_public),
+                (function () {
+                    const canSeePrivate = isAdmin || isOwner || char.bio_public_visible || (myCharId && visibleTo.includes(myCharId));
+                    return (React.createElement(React.Fragment, null,
+                        React.createElement("p", null,
+                            React.createElement("b", null, "Ra\u00E7a:"),
+                            " ",
+                            React.createElement("span", { className: "muted" }, (races.find(r => r.id === char.race_id) || {}).name || '—')),
+                        React.createElement("p", { style: { marginTop: 8 } },
+                            React.createElement("b", null, "Cl\u00E3/Guilda:"),
+                            " ",
+                            React.createElement("span", { className: "muted" }, (guilds.find(g => g.id === char.guild_id) || {}).name || '—')),
+                        React.createElement("p", { style: { marginTop: 8 } },
+                            React.createElement("b", null, "Afilia\u00E7\u00E3o:"),
+                            " ",
+                            React.createElement("span", { className: "muted" }, char.affiliation || '—')),
+                        React.createElement("p", { style: { marginTop: 8 } },
+                            React.createElement("b", null, "Local atual:"),
+                            " ",
+                            React.createElement("span", { className: "muted" }, (locations.find(l => l.id === char.current_location_id) || {}).name || 'Nenhum')),
+                        canSeePrivate ? (React.createElement(React.Fragment, null,
+                            React.createElement("p", { style: { marginTop: 8 } },
+                                React.createElement("b", null, "Apar\u00EAncia:"),
+                                " ",
+                                React.createElement("span", { className: "muted" }, char.appearance || '—')),
+                            char.origin_story && React.createElement("p", { style: { marginTop: 8 } },
+                                React.createElement("b", null, "Origem:"),
+                                " ",
+                                React.createElement("span", { className: "muted" }, char.origin_story)),
+                            char.bio_public && React.createElement("p", { style: { marginTop: 14 } }, char.bio_public))) : (React.createElement("div", { className: "empty-state", style: { marginTop: 14, fontSize: 13 } }, "\uD83D\uDD12 Este personagem ainda n\u00E3o revelou sua hist\u00F3ria para voc\u00EA. Aproxime-se durante a narrativa."))));
+                })(),
+                isAdmin && (React.createElement("div", { className: "admin-box", style: { marginTop: 16 } },
+                    React.createElement("div", { className: "admin-box-title" }, "Visibilidade da bio"),
+                    React.createElement("div", { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 } },
+                        React.createElement("label", { style: { fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' } },
+                            React.createElement("input", { type: "checkbox", checked: !!char.bio_public_visible, onChange: async (e) => {
+                                    await supabase.from('characters').update({ bio_public_visible: e.target.checked }).eq('id', char.id);
+                                    toast(e.target.checked ? 'Bio visível para todos.' : 'Bio privada.');
+                                    onChanged();
+                                } }),
+                            "Vis\u00EDvel para todos os jogadores")),
+                    React.createElement("div", { className: "field" },
+                        React.createElement("label", null, "Ou liberar para personagens espec\u00EDficos"),
+                        React.createElement("div", { style: { display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 } }, visibleTo.map(vid => {
+                            const lc = localChars.find(c => c.id === vid);
+                            return (React.createElement("span", { key: vid, style: { background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 20, padding: '3px 10px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 } },
+                                lc ? lc.name : vid.slice(0, 8),
+                                React.createElement("button", { style: { border: 'none', background: 'none', color: 'var(--magenta)', cursor: 'pointer', fontSize: 12 }, onClick: async () => {
+                                        await supabase.from('character_visibility').delete().eq('character_id', char.id).eq('viewer_char_id', vid);
+                                        setVisibleTo(v => v.filter(x => x !== vid));
+                                    } }, "\u2715")));
+                        })),
+                        React.createElement("select", { onChange: async (e) => {
+                                const vid = e.target.value;
+                                if (!vid)
+                                    return;
+                                await supabase.from('character_visibility').upsert({ character_id: char.id, viewer_char_id: vid });
+                                setVisibleTo(v => [...new Set([...v, vid])]);
+                                e.target.value = '';
+                            } },
+                            React.createElement("option", { value: "" }, "+ Adicionar personagem..."),
+                            localChars.filter(c => !visibleTo.includes(c.id)).map(c => React.createElement("option", { key: c.id, value: c.id }, c.name)))))),
                 isAdmin && (React.createElement("div", { className: "admin-box" },
                     React.createElement("div", { className: "admin-box-title" }, "Mover para local"),
                     React.createElement("select", { defaultValue: char.current_location_id || '', onChange: e => moveToLocation(e.target.value) },
@@ -1584,6 +1650,110 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
                                 sellPrice,
                                 ")")))));
                 }))),
+            tab === 'inventario' && (trades.length > 0 || (localChars.length > 0 && isOwner && !isAdmin)) && (React.createElement("div", { className: "tab-panel", style: { marginTop: 16 } },
+                React.createElement("div", { className: "attr-label", style: { marginBottom: 10 } }, "\uD83E\uDD1D Negocia\u00E7\u00F5es"),
+                trades.filter(t => t.to_character_id === char.id).map(t => (React.createElement("div", { key: t.id, className: "roll-card", style: { borderColor: 'var(--cyan)' } },
+                    React.createElement("div", { style: { fontSize: 13, marginBottom: 6 } },
+                        React.createElement("b", null, t.from_char && t.from_char.name),
+                        " quer negociar:",
+                        t.offer_item && React.createElement("span", { style: { color: 'var(--gold)', marginLeft: 6 } },
+                            "oferece ",
+                            t.offer_item.item && t.offer_item.item.name),
+                        t.offer_coins > 0 && React.createElement("span", { style: { color: 'var(--gold)', marginLeft: 6 } },
+                            "+ \uD83D\uDCB0",
+                            t.offer_coins),
+                        t.request_item && React.createElement("span", { style: { color: 'var(--muted)', marginLeft: 6 } },
+                            " \u00B7 quer ",
+                            t.request_item.item && t.request_item.item.name),
+                        t.request_coins > 0 && React.createElement("span", { style: { color: 'var(--muted)', marginLeft: 6 } },
+                            " + \uD83D\uDCB0",
+                            t.request_coins)),
+                    t.message && React.createElement("p", { style: { fontSize: 12, color: 'var(--muted)', marginBottom: 8 } },
+                        "\"",
+                        t.message,
+                        "\""),
+                    React.createElement("div", { style: { display: 'flex', gap: 8 } },
+                        React.createElement("button", { className: "btn-primary btn-sm", onClick: async () => {
+                                const { data, error } = await supabase.rpc('accept_trade', { p_trade_id: t.id });
+                                if (error || (data && data.error)) {
+                                    toast('Erro: ' + (error ? error.message : data.error));
+                                    return;
+                                }
+                                toast('Negociação concluída!');
+                                loadInventory();
+                                loadTrades();
+                                onChanged();
+                            } }, "\u2713 Aceitar"),
+                        React.createElement("button", { className: "btn-ghost btn-sm", onClick: async () => {
+                                await supabase.from('trade_proposals').update({ status: 'recusada' }).eq('id', t.id);
+                                toast('Proposta recusada.');
+                                loadTrades();
+                            } }, "\u2715 Recusar"))))),
+                trades.filter(t => t.from_character_id === char.id).map(t => (React.createElement("div", { key: t.id, className: "roll-card", style: { opacity: .75 } },
+                    React.createElement("div", { style: { fontSize: 12, color: 'var(--muted)' } },
+                        "Aguardando resposta de ",
+                        React.createElement("b", null, t.to_char && t.to_char.name),
+                        t.offer_item && React.createElement("span", null,
+                            " \u00B7 ofereci ",
+                            t.offer_item.item && t.offer_item.item.name),
+                        t.offer_coins > 0 && React.createElement("span", null,
+                            " + \uD83D\uDCB0",
+                            t.offer_coins)),
+                    React.createElement("button", { className: "btn-ghost btn-sm", style: { marginTop: 6, fontSize: 11 }, onClick: async () => {
+                            await supabase.from('trade_proposals').update({ status: 'cancelada' }).eq('id', t.id);
+                            toast('Proposta cancelada.');
+                            loadTrades();
+                        } }, "Cancelar proposta")))),
+                isOwner && !isAdmin && localChars.length > 0 && !tradeForm && (React.createElement("button", { className: "btn-ghost btn-sm", style: { marginTop: 8 }, onClick: () => setTradeForm({ toCharId: localChars[0].id, offerInvId: '', offerCoins: 0, reqInvId: '', reqCoins: 0, message: '' }) }, "+ Propor negocia\u00E7\u00E3o")),
+                tradeForm && (React.createElement("div", { className: "admin-box", style: { marginTop: 8 } },
+                    React.createElement("div", { className: "admin-box-title" }, "Nova proposta"),
+                    React.createElement("div", { className: "field" },
+                        React.createElement("label", null, "Propor para"),
+                        React.createElement("select", { value: tradeForm.toCharId, onChange: e => setTradeForm(Object.assign(Object.assign({}, tradeForm), { toCharId: e.target.value })) }, localChars.map(c => React.createElement("option", { key: c.id, value: c.id }, c.name)))),
+                    React.createElement("div", { className: "grid2" },
+                        React.createElement("div", { className: "field" },
+                            React.createElement("label", null, "Ofere\u00E7o (item meu)"),
+                            React.createElement("select", { value: tradeForm.offerInvId, onChange: e => setTradeForm(Object.assign(Object.assign({}, tradeForm), { offerInvId: e.target.value })) },
+                                React.createElement("option", { value: "" }, "\u2014 nenhum \u2014"),
+                                inventory.map(inv => React.createElement("option", { key: inv.id, value: inv.id }, inv.item.name)))),
+                        React.createElement("div", { className: "field" },
+                            React.createElement("label", null, "Ofere\u00E7o \uD83D\uDCB0 moedas"),
+                            React.createElement("input", { type: "number", min: "0", value: tradeForm.offerCoins, onChange: e => setTradeForm(Object.assign(Object.assign({}, tradeForm), { offerCoins: +e.target.value })) })),
+                        React.createElement("div", { className: "field" },
+                            React.createElement("label", null, "Pe\u00E7o em troca (moedas)"),
+                            React.createElement("input", { type: "number", min: "0", value: tradeForm.reqCoins, onChange: e => setTradeForm(Object.assign(Object.assign({}, tradeForm), { reqCoins: +e.target.value })) }))),
+                    React.createElement("div", { className: "field" },
+                        React.createElement("label", null, "Mensagem (opcional)"),
+                        React.createElement("input", { value: tradeForm.message, onChange: e => setTradeForm(Object.assign(Object.assign({}, tradeForm), { message: e.target.value })), placeholder: "Diz a\u00ED..." })),
+                    React.createElement("div", { style: { display: 'flex', gap: 8 } },
+                        React.createElement("button", { className: "btn-primary btn-sm", onClick: async () => {
+                                if (!tradeForm.toCharId) {
+                                    toast('Escolha o destinatário.');
+                                    return;
+                                }
+                                if (!tradeForm.offerInvId && !tradeForm.offerCoins) {
+                                    toast('Ofereça pelo menos um item ou moedas.');
+                                    return;
+                                }
+                                const { error } = await supabase.from('trade_proposals').insert({
+                                    from_character_id: char.id,
+                                    to_character_id: tradeForm.toCharId,
+                                    location_id: char.current_location_id,
+                                    offer_item_inv_id: tradeForm.offerInvId || null,
+                                    offer_coins: tradeForm.offerCoins || 0,
+                                    request_item_inv_id: null,
+                                    request_coins: tradeForm.reqCoins || 0,
+                                    message: tradeForm.message || null,
+                                });
+                                if (error) {
+                                    toast('Erro: ' + error.message);
+                                    return;
+                                }
+                                toast('Proposta enviada!');
+                                setTradeForm(null);
+                                loadTrades();
+                            } }, "Enviar proposta"),
+                        React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => setTradeForm(null) }, "Cancelar")))))),
             tab === 'historico' && (React.createElement("div", { className: "tab-panel" },
                 actionHistory.length === 0 && React.createElement("p", { className: "muted" }, "Nenhuma a\u00E7\u00E3o registrada ainda para este personagem."),
                 actionHistory.map(a => (React.createElement("div", { key: a.id, className: "roll-card" },
