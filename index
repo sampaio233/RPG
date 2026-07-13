@@ -1564,15 +1564,19 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
                                         toast('Desequipe antes de vender.');
                                         return;
                                     }
-                                    const { data: c } = await supabase.from('characters').select('coins').eq('id', char.id).single();
-                                    await supabase.from('characters').update({ coins: (c ? c.coins : 0) + sellPrice }).eq('id', char.id);
-                                    if (inv.quantity > 1) {
-                                        await supabase.from('character_items').update({ quantity: inv.quantity - 1 }).eq('id', inv.id);
+                                    const { data, error } = await supabase.rpc('player_sell_item', {
+                                        p_character_id: char.id,
+                                        p_inv_id: inv.id,
+                                    });
+                                    if (error) {
+                                        toast('Erro: ' + error.message);
+                                        return;
                                     }
-                                    else {
-                                        await supabase.from('character_items').delete().eq('id', inv.id);
+                                    if (data && data.error) {
+                                        toast(data.error);
+                                        return;
                                     }
-                                    toast('Vendido por 💰' + sellPrice + '!');
+                                    toast('Vendido por 💰' + (data && data.sell_price) + '! Total: ' + (data && data.coins_now));
                                     loadInventory();
                                     onChanged();
                                 } },
@@ -1975,28 +1979,20 @@ function MapView({ profile, toast, goto, setActionLocation, openCharacter }) {
             toast('Moedas insuficientes! Você tem ' + (myChar.coins || 0) + ' moedas.');
             return;
         }
-        // desconta moedas
-        const { error: e1 } = await supabase.from('characters')
-            .update({ coins: myChar.coins - price })
-            .eq('id', myChar.id)
-            .eq('owner_id', profile.id); // garante que só o dono compra
-        if (e1) {
-            toast('Erro ao descontar moedas: ' + e1.message);
+        const { data, error } = await supabase.rpc('player_buy_item', {
+            p_character_id: myChar.id,
+            p_item_id: itemId,
+        });
+        if (error) {
+            toast('Erro: ' + error.message);
             return;
         }
-        // adiciona item ao inventário
-        const { data: existing } = await supabase.from('character_items')
-            .select('id,quantity').eq('character_id', myChar.id).eq('item_id', itemId).maybeSingle();
-        if (existing) {
-            await supabase.from('character_items').update({ quantity: existing.quantity + 1 }).eq('id', existing.id);
+        if (data && data.error) {
+            toast('Erro: ' + data.error);
+            return;
         }
-        else {
-            await supabase.from('character_items').insert({ character_id: myChar.id, item_id: itemId, quantity: 1 });
-        }
-        toast('💰 Comprado! -' + price + ' moedas.');
-        // força reload geral
+        toast('💰 Comprado! -' + price + ' moedas. Restam: ' + (data && data.coins_left));
         load();
-        // dispara evento global que a ficha do personagem escuta
         window.dispatchEvent(new CustomEvent('inventory-changed', { detail: { characterId: myChar.id } }));
     }
     async function uploadLocationImage(e) {
