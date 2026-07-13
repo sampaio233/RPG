@@ -119,7 +119,9 @@ label{ font-size:12px; color:var(--muted); text-transform:uppercase; letter-spac
 .char-card{ background:linear-gradient(160deg,var(--panel-raised),var(--panel)); border:1px solid var(--border); border-radius:16px;
   padding:0; overflow:hidden; cursor:pointer; transition:transform .2s ease, box-shadow .2s ease; }
 .char-card:hover{ transform:translateY(-5px); box-shadow:0 14px 34px rgba(0,0,0,.5); }
-.char-avatar{ width:100%; height:170px; object-fit:cover; background:#05050a; display:block; }
+.char-avatar-wrap{ position:relative; width:100%; height:170px; overflow:hidden; background:#05050a; }
+.char-avatar-bg{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; filter:blur(18px) brightness(.5) saturate(1.15); transform:scale(1.25); display:block; }
+.char-avatar{ position:absolute; inset:0; width:100%; height:100%; object-fit:contain; object-position:center center; display:block; background:transparent; }
 .char-avatar-placeholder{ width:100%; height:170px; display:flex; align-items:center; justify-content:center;
   font-family:var(--font-display); font-size:40px; color:var(--purple); background:#05050a; }
 .char-card-body{ padding:16px 18px; }
@@ -326,6 +328,13 @@ function useToast() {
 function rankClass(r) { return 'rank-' + (r || 'A'); }
 function attrModifier(v) { return Math.floor((v - 50) / 10); }
 function initialsOf(name) { return (name || '?').slice(0, 2).toUpperCase(); }
+function CardPhoto({ src, alt, fallbackIcon }) {
+    if (!src)
+        return React.createElement("div", { className: "char-avatar-placeholder" }, fallbackIcon);
+    return (React.createElement("div", { className: "char-avatar-wrap" },
+        React.createElement("img", { className: "char-avatar-bg", src: src, alt: "", "aria-hidden": "true" }),
+        React.createElement("img", { className: "char-avatar", src: src, alt: alt })));
+}
 // remove acentos, espaços e caracteres especiais do nome do arquivo antes de subir pro Storage
 function sanitizeFileName(name) {
     const noAccents = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -619,7 +628,7 @@ function GuildsView({ profile, toast }) {
         guilds === null && React.createElement("p", { className: "loading" }, "Carregando..."),
         guilds && guilds.length === 0 && React.createElement("div", { className: "empty-state" }, "Nenhum cl\u00E3 ou guilda cadastrado ainda."),
         React.createElement("div", { className: "char-grid" }, guilds && guilds.map(g => (React.createElement("div", { className: "char-card", key: g.id, onClick: () => { setOpenId(g.id); loadImages(g.id); } },
-            g.banner_url ? React.createElement("img", { className: "char-avatar", src: g.banner_url, alt: g.name }) : React.createElement("div", { className: "char-avatar-placeholder" }, g.icon),
+            React.createElement(CardPhoto, { src: g.banner_url, alt: g.name, fallbackIcon: g.icon }),
             React.createElement("div", { className: "char-card-body" },
                 React.createElement("div", { className: "card-top" },
                     React.createElement("div", null,
@@ -777,7 +786,7 @@ function RacesView({ profile, toast }) {
         races && races.length === 0 && React.createElement("div", { className: "empty-state" }, "Nenhuma ra\u00E7a cadastrada ainda."),
         React.createElement("input", { type: "file", accept: "image/*", ref: fileRef, style: { display: 'none' }, onChange: uploadRaceImage }),
         React.createElement("div", { className: "char-grid" }, races && races.map(r => (React.createElement("div", { className: "char-card", key: r.id, style: { cursor: 'default' } },
-            r.image_url ? React.createElement("img", { className: "char-avatar", src: r.image_url, alt: r.name }) : React.createElement("div", { className: "char-avatar-placeholder" }, r.icon),
+            React.createElement(CardPhoto, { src: r.image_url, alt: r.name, fallbackIcon: r.icon }),
             React.createElement("div", { className: "char-card-body" },
                 React.createElement("div", { className: "card-top" },
                     React.createElement("div", null,
@@ -1340,6 +1349,19 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
         toast(leveled ? char.name + ' subiu para o nível ' + level + '! (+1 ponto de habilidade)' : char.name + ' ganhou EXP.');
         onChanged();
     }
+    async function adjustStat(field, maxField, amount) {
+        const current = char[field] || 0;
+        const max = char[maxField] || 0;
+        const next = Math.max(0, Math.min(max, current + amount));
+        if (next === current)
+            return;
+        const { error } = await supabase.from('characters').update({ [field]: next }).eq('id', char.id);
+        if (error) {
+            toast('Erro: ' + error.message);
+            return;
+        }
+        onChanged();
+    }
     async function unlockSkill(skill) {
         if (char.skill_points <= 0) {
             toast('Sem pontos de habilidade disponíveis.');
@@ -1612,7 +1634,13 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
                                     "/",
                                     char.hp_max)),
                             React.createElement("div", { className: "gauge" },
-                                React.createElement("div", { className: "gauge-fill gauge-hp", style: { width: (100 * char.hp_current / Math.max(1, char.hp_max)) + '%' } })))) : React.createElement("div", { className: "muted", style: { fontSize: 13 } }, "\uD83D\uDD12 HP vis\u00EDvel apenas em combate.")),
+                                React.createElement("div", { className: "gauge-fill gauge-hp", style: { width: (100 * char.hp_current / Math.max(1, char.hp_max)) + '%' } })),
+                            isAdmin && (React.createElement("div", { style: { display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 } },
+                                React.createElement("button", { type: "button", className: "btn-ghost btn-sm", onClick: () => adjustStat('hp_current', 'hp_max', -10) }, "\u221210"),
+                                React.createElement("button", { type: "button", className: "btn-ghost btn-sm", onClick: () => adjustStat('hp_current', 'hp_max', -1) }, "\u22121"),
+                                React.createElement("button", { type: "button", className: "btn-ghost btn-sm", onClick: () => adjustStat('hp_current', 'hp_max', 1) }, "+1"),
+                                React.createElement("button", { type: "button", className: "btn-ghost btn-sm", onClick: () => adjustStat('hp_current', 'hp_max', 10) }, "+10"),
+                                React.createElement("button", { type: "button", className: "btn-primary btn-sm", onClick: () => adjustStat('hp_current', 'hp_max', char.hp_max) }, "Curar tudo"))))) : React.createElement("div", { className: "muted", style: { fontSize: 13 } }, "\uD83D\uDD12 HP vis\u00EDvel apenas em combate.")),
                     React.createElement("div", null,
                         React.createElement("div", { className: "stat-row" },
                             React.createElement("span", null, "Energia"),
@@ -1621,7 +1649,13 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
                                 "/",
                                 char.mp_max)),
                         React.createElement("div", { className: "gauge" },
-                            React.createElement("div", { className: "gauge-fill gauge-mp", style: { width: (100 * char.mp_current / Math.max(1, char.mp_max)) + '%' } })))),
+                            React.createElement("div", { className: "gauge-fill gauge-mp", style: { width: (100 * char.mp_current / Math.max(1, char.mp_max)) + '%' } })),
+                        isAdmin && (React.createElement("div", { style: { display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 } },
+                            React.createElement("button", { type: "button", className: "btn-ghost btn-sm", onClick: () => adjustStat('mp_current', 'mp_max', -10) }, "\u221210"),
+                            React.createElement("button", { type: "button", className: "btn-ghost btn-sm", onClick: () => adjustStat('mp_current', 'mp_max', -1) }, "\u22121"),
+                            React.createElement("button", { type: "button", className: "btn-ghost btn-sm", onClick: () => adjustStat('mp_current', 'mp_max', 1) }, "+1"),
+                            React.createElement("button", { type: "button", className: "btn-ghost btn-sm", onClick: () => adjustStat('mp_current', 'mp_max', 10) }, "+10"),
+                            React.createElement("button", { type: "button", className: "btn-primary btn-sm", onClick: () => adjustStat('mp_current', 'mp_max', char.mp_max) }, "Recuperar tudo"))))),
                 React.createElement("div", { className: "attr-grid" },
                     React.createElement("div", { className: "attr-box" },
                         React.createElement("div", { className: "attr-label" }, "For\u00E7a"),
@@ -2101,7 +2135,7 @@ function CharactersView({ profile, toast, initialOpenId, clearInitialOpenId }) {
     }
     function CharCard({ c }) {
         return (React.createElement("div", { className: "char-card", key: c.id, onClick: () => setOpenId(c.id) },
-            c.avatar_url ? React.createElement("img", { className: "char-avatar", src: c.avatar_url, alt: c.name }) : React.createElement("div", { className: "char-avatar-placeholder" }, initialsOf(c.name)),
+            React.createElement(CardPhoto, { src: c.avatar_url, alt: c.name, fallbackIcon: initialsOf(c.name) }),
             React.createElement("div", { className: "char-card-body" },
                 React.createElement("div", { className: "card-top" },
                     React.createElement("div", null,
