@@ -680,11 +680,28 @@ function RacesView({ profile, toast }) {
     const [creating, setCreating] = useState(false);
     const [form, setForm] = useState({ name: '', description: '', icon: '🧬', bonus_forca: 0, bonus_agilidade: 0, bonus_inteligencia: 0 });
     const [editingId, setEditingId] = useState(null);
+    const [uploadingId, setUploadingId] = useState(null);
+    const fileRef = useRef(null);
     async function load() {
         const { data } = await supabase.from('races').select('*').order('name');
         setRaces(data || []);
     }
     useEffect(() => { load(); }, []);
+    async function uploadRaceImage(e) {
+        const file = e.target.files[0];
+        if (!file || !uploadingId)
+            return;
+        const path = 'races/' + uploadingId + '/' + Date.now() + '_' + sanitizeFileName(file.name);
+        const { error: upErr } = await supabase.storage.from('maps').upload(path, file, { upsert: true });
+        if (upErr) {
+            toast('Erro no upload: ' + upErr.message);
+            return;
+        }
+        const { data } = supabase.storage.from('maps').getPublicUrl(path);
+        await supabase.from('races').update({ image_url: data.publicUrl }).eq('id', uploadingId);
+        toast('Foto da raça atualizada.');
+        load();
+    }
     function startCreate() {
         setForm({ name: '', description: '', icon: '🧬', bonus_forca: 0, bonus_agilidade: 0, bonus_inteligencia: 0 });
         setEditingId(null);
@@ -758,7 +775,9 @@ function RacesView({ profile, toast }) {
                     React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => setCreating(false) }, "Cancelar")))))),
         races === null && React.createElement("p", { className: "loading" }, "Carregando ra\u00E7as..."),
         races && races.length === 0 && React.createElement("div", { className: "empty-state" }, "Nenhuma ra\u00E7a cadastrada ainda."),
+        React.createElement("input", { type: "file", accept: "image/*", ref: fileRef, style: { display: 'none' }, onChange: uploadRaceImage }),
         React.createElement("div", { className: "char-grid" }, races && races.map(r => (React.createElement("div", { className: "char-card", key: r.id, style: { cursor: 'default' } },
+            r.image_url ? React.createElement("img", { className: "char-avatar", src: r.image_url, alt: r.name }) : React.createElement("div", { className: "char-avatar-placeholder" }, r.icon),
             React.createElement("div", { className: "char-card-body" },
                 React.createElement("div", { className: "card-top" },
                     React.createElement("div", null,
@@ -771,7 +790,8 @@ function RacesView({ profile, toast }) {
                     r.bonus_forca ? 'Força ' + (r.bonus_forca > 0 ? '+' : '') + r.bonus_forca + ' ' : '',
                     r.bonus_agilidade ? 'Agilidade ' + (r.bonus_agilidade > 0 ? '+' : '') + r.bonus_agilidade + ' ' : '',
                     r.bonus_inteligencia ? 'Inteligência ' + (r.bonus_inteligencia > 0 ? '+' : '') + r.bonus_inteligencia : '')) : null,
-                isAdmin && (React.createElement("div", { style: { display: 'flex', gap: 8, marginTop: 10 } },
+                isAdmin && (React.createElement("div", { style: { display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' } },
+                    React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => { setUploadingId(r.id); fileRef.current.click(); } }, r.image_url ? '🖼️ Trocar foto' : '🖼️ Adicionar foto'),
                     React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => startEdit(r) }, "Editar"),
                     React.createElement("button", { className: "btn-danger", onClick: () => remove(r.id) }, "Apagar"))))))))));
 }
@@ -2224,9 +2244,13 @@ function MapView({ profile, toast, goto, setActionLocation, openCharacter }) {
             setCharacters(chars || []);
         }
         else {
-            const { data: mc } = await supabase.from('characters').select('*').eq('owner_id', profile.id).eq('status', 'aprovado').maybeSingle();
+            const { data: mc } = await supabase.from('characters').select('*').eq('owner_id', profile.id).eq('category', 'principal').eq('status', 'aprovado').maybeSingle();
             setMyChar(mc || null);
-            setCharacters(mc ? [mc] : []);
+            const { data: secs } = await supabase.from('characters').select('id,name,avatar_url,rank,current_location_id').eq('category', 'secundario');
+            const combined = secs ? secs.slice() : [];
+            if (mc && !combined.find(c => c.id === mc.id))
+                combined.push(mc);
+            setCharacters(combined);
             if (mc) {
                 const { data: unlocked } = await supabase.from('character_unlocked_locations').select('location_id').eq('character_id', mc.id);
                 setUnlockedIds((unlocked || []).map(u => u.location_id));
