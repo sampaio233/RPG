@@ -1510,33 +1510,75 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
                 React.createElement("p", { style: { marginBottom: 14, fontSize: 15 } },
                     "\uD83D\uDCB0 Moedas: ",
                     React.createElement("b", { style: { color: 'var(--gold)' } }, char.coins)),
+                inventory.some(i => i.equipped) && (React.createElement("div", { style: { marginBottom: 18 } },
+                    React.createElement("div", { className: "attr-label", style: { marginBottom: 8 } }, "Equipamentos ativos"),
+                    React.createElement("div", { style: { display: 'flex', flexWrap: 'wrap', gap: 8 } }, inventory.filter(i => i.equipped).map(inv => {
+                        const it = inv.item;
+                        const icons = { pocao: '🧪', arma: '⚔️', armadura: '🛡️', capuz: '🪖', bota: '👢', anel: '💍', bracelete: '📿', pingente: '🔮', ferramenta: '🔧' };
+                        return (React.createElement("div", { key: inv.id, style: { background: 'var(--panel)', border: '1px solid var(--gold)', borderRadius: 10, padding: '8px 12px', minWidth: 80, textAlign: 'center' } },
+                            React.createElement("div", { style: { fontSize: 22 } }, icons[it.type] || '📦'),
+                            React.createElement("div", { style: { fontSize: 11, fontWeight: 700, marginTop: 3 } }, it.name),
+                            (it.bonus_forca || it.bonus_agilidade || it.bonus_inteligencia || it.bonus_hp_max || it.bonus_mp_max || it.resistencia) && (React.createElement("div", { style: { fontSize: 10, color: 'var(--cyan)', marginTop: 2 } },
+                                it.bonus_forca > 0 ? '+' + it.bonus_forca + 'F ' : '',
+                                it.bonus_agilidade > 0 ? '+' + it.bonus_agilidade + 'A ' : '',
+                                it.bonus_inteligencia > 0 ? '+' + it.bonus_inteligencia + 'I ' : '',
+                                it.bonus_hp_max > 0 ? '+' + it.bonus_hp_max + 'HP ' : '',
+                                it.resistencia > 0 ? it.resistencia + 'Res' : ''))));
+                    })))),
                 inventory.length === 0 && React.createElement("p", { className: "muted" }, "Invent\u00E1rio vazio."),
                 inventory.map(inv => {
                     const it = inv.item;
-                    const isEquippable = it.type === 'arma' || it.type === 'armadura' || it.type === 'ferramenta';
+                    const icons = { pocao: '🧪', arma: '⚔️', armadura: '🛡️', capuz: '🪖', bota: '👢', anel: '💍', bracelete: '📿', pingente: '🔮', ferramenta: '🔧' };
+                    const isEquippable = it.type !== 'pocao' && it.type !== 'outro';
                     const hasBonus = it.bonus_forca || it.bonus_agilidade || it.bonus_inteligencia || it.bonus_hp_max || it.bonus_mp_max || it.resistencia;
-                    return (React.createElement("div", { key: inv.id, className: "skill-node " + (inv.equipped ? 'unlocked' : 'unlocked'), style: inv.equipped ? { borderColor: 'var(--gold)' } : {} },
-                        React.createElement("div", { className: "skill-icon" }, it.type === 'pocao' ? '🧪' : it.type === 'arma' ? '⚔️' : it.type === 'armadura' ? '🛡️' : '🔧'),
+                    const sellPrice = Math.floor((it.price || 0) / 2);
+                    return (React.createElement("div", { key: inv.id, className: "skill-node unlocked", style: inv.equipped ? { borderColor: 'var(--gold)' } : {} },
+                        React.createElement("div", { className: "skill-icon", style: { fontSize: 22 } }, icons[it.type] || '📦'),
                         React.createElement("div", { className: "skill-body" },
                             React.createElement("div", { className: "skill-name" },
                                 it.name,
-                                " \u00D7 ",
-                                inv.quantity,
-                                inv.equipped && React.createElement("span", { style: { fontSize: 11, color: 'var(--gold)', marginLeft: 6 } }, "EQUIPADO")),
-                            React.createElement("div", { className: "skill-req" }, it.description),
+                                inv.quantity > 1 && React.createElement("span", { className: "muted" },
+                                    " \u00D7 ",
+                                    inv.quantity),
+                                inv.equipped && React.createElement("span", { style: { fontSize: 10, color: 'var(--gold)', marginLeft: 6, background: 'rgba(255,210,63,.15)', padding: '1px 5px', borderRadius: 4 } }, "EQUIPADO")),
+                            React.createElement("div", { className: "skill-req", style: { textTransform: 'capitalize' } },
+                                it.type,
+                                " \u00B7 ",
+                                it.quality),
+                            it.description && React.createElement("div", { style: { fontSize: 12, color: 'var(--muted)' } }, it.description),
                             hasBonus && (React.createElement("div", { style: { fontSize: 11.5, color: 'var(--cyan)', marginTop: 3 } },
-                                it.bonus_forca > 0 ? `+${it.bonus_forca} Força ` : '',
-                                it.bonus_agilidade > 0 ? `+${it.bonus_agilidade} Agi ` : '',
-                                it.bonus_inteligencia > 0 ? `+${it.bonus_inteligencia} Int ` : '',
-                                it.bonus_hp_max > 0 ? `+${it.bonus_hp_max} HP ` : '',
-                                it.bonus_mp_max > 0 ? `+${it.bonus_mp_max} MP ` : '',
-                                it.resistencia > 0 ? `${it.resistencia} Res` : ''))),
-                        React.createElement("div", { style: { display: 'flex', flexDirection: 'column', gap: 4 } },
-                            it.type === 'pocao' && (isOwner || isAdmin) && (React.createElement("button", { className: "btn-primary btn-sm", onClick: () => useItem(it.id) }, "Usar")),
+                                it.bonus_forca > 0 ? '+' + it.bonus_forca + ' Força ' : '',
+                                it.bonus_agilidade > 0 ? '+' + it.bonus_agilidade + ' Agi ' : '',
+                                it.bonus_inteligencia > 0 ? '+' + it.bonus_inteligencia + ' Int ' : '',
+                                it.bonus_hp_max > 0 ? '+' + it.bonus_hp_max + ' HP ' : '',
+                                it.bonus_mp_max > 0 ? '+' + it.bonus_mp_max + ' MP ' : '',
+                                it.resistencia > 0 ? it.resistencia + ' Res' : ''))),
+                        React.createElement("div", { style: { display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' } },
+                            it.type === 'pocao' && (isOwner || isAdmin) && (React.createElement("button", { className: "btn-primary btn-sm", onClick: () => useItem(it.id) }, "\uD83E\uDDEA Usar")),
                             isEquippable && (isOwner || isAdmin) && (React.createElement("button", { className: "btn-sm " + (inv.equipped ? 'btn-ghost' : 'btn-primary'), onClick: async () => {
                                     await supabase.from('character_items').update({ equipped: !inv.equipped }).eq('id', inv.id);
                                     loadInventory();
-                                } }, inv.equipped ? 'Desequipar' : 'Equipar')))));
+                                } }, inv.equipped ? 'Desequipar' : 'Equipar')),
+                            (isOwner || isAdmin) && (React.createElement("button", { className: "btn-ghost btn-sm", style: { fontSize: 11, color: 'var(--gold)' }, onClick: async () => {
+                                    if (inv.equipped) {
+                                        toast('Desequipe antes de vender.');
+                                        return;
+                                    }
+                                    const { data: c } = await supabase.from('characters').select('coins').eq('id', char.id).single();
+                                    await supabase.from('characters').update({ coins: (c ? c.coins : 0) + sellPrice }).eq('id', char.id);
+                                    if (inv.quantity > 1) {
+                                        await supabase.from('character_items').update({ quantity: inv.quantity - 1 }).eq('id', inv.id);
+                                    }
+                                    else {
+                                        await supabase.from('character_items').delete().eq('id', inv.id);
+                                    }
+                                    toast('Vendido por 💰' + sellPrice + '!');
+                                    loadInventory();
+                                    onChanged();
+                                } },
+                                "\uD83D\uDCB0 Vender (",
+                                sellPrice,
+                                ")")))));
                 }))),
             tab === 'historico' && (React.createElement("div", { className: "tab-panel" },
                 actionHistory.length === 0 && React.createElement("p", { className: "muted" }, "Nenhuma a\u00E7\u00E3o registrada ainda para este personagem."),
@@ -2207,6 +2249,14 @@ function MapView({ profile, toast, goto, setActionLocation, openCharacter }) {
                                     React.createElement("select", { value: newItem.type, onChange: e => setNewItem(Object.assign(Object.assign({}, newItem), { type: e.target.value })) },
                                         React.createElement("option", { value: "pocao" }, "Po\u00E7\u00E3o"),
                                         React.createElement("option", { value: "arma" }, "Arma"),
+                                        React.createElement("option", { value: "armadura" }, "Armadura"),
+                                        React.createElement("option", { value: "capuz" }, "Capuz/Elmo"),
+                                        React.createElement("option", { value: "bota" }, "Bota"),
+                                        React.createElement("option", { value: "anel" }, "Anel"),
+                                        React.createElement("option", { value: "bracelete" }, "Bracelete"),
+                                        React.createElement("option", { value: "pingente" }, "Pingente"),
+                                        React.createElement("option", { value: "ferramenta" }, "Ferramenta"),
+                                        React.createElement("option", { value: "outro" }, "Outro"),
                                         React.createElement("option", { value: "armadura" }, "Armadura"),
                                         React.createElement("option", { value: "ferramenta" }, "Ferramenta"))),
                                 React.createElement("div", { className: "field" },
