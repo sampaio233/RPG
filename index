@@ -592,7 +592,7 @@ function GuildsView({ profile, toast }) {
     async function load() {
         const { data } = await supabase.from('guilds').select('*').order('name');
         setGuilds(data || []);
-        const { data: chars } = await supabase.from('characters').select('id,name,avatar_url,rank,guild_id').eq('status', 'aprovado');
+        const { data: chars } = await supabase.from('characters').select('id,name,avatar_url,rank,guild_id,guild_featured').eq('status', 'aprovado');
         setCharacters(chars || []);
         const { data: locs } = await supabase.from('map_locations').select('id,name').order('name');
         setLocations(locs || []);
@@ -671,6 +671,14 @@ function GuildsView({ profile, toast }) {
         await supabase.from('guild_images').insert({ guild_id: openId, image_url: data.publicUrl });
         toast('Foto adicionada.');
         loadImages(openId);
+    }
+    async function toggleFeatured(c) {
+        const { error } = await supabase.from('characters').update({ guild_featured: !c.guild_featured }).eq('id', c.id);
+        if (error) {
+            toast('Erro: ' + error.message);
+            return;
+        }
+        load();
     }
     const openGuild = guilds && guilds.find(g => g.id === openId);
     const members = openId ? characters.filter(c => c.guild_id === openId) : [];
@@ -753,15 +761,38 @@ function GuildsView({ profile, toast }) {
                         React.createElement("button", { className: "btn-ghost btn-sm", style: { marginTop: 8 }, onClick: () => galleryRef.current.click() }, "+ Adicionar foto"),
                         React.createElement("input", { type: "file", accept: "image/*", ref: galleryRef, style: { display: 'none' }, onChange: uploadGalleryImage })))),
                 React.createElement("div", { style: { marginBottom: 18 } },
-                    React.createElement("div", { className: "attr-label", style: { marginBottom: 8 } },
-                        "Membros (",
-                        members.length,
-                        ")"),
-                    members.length === 0 && React.createElement("p", { className: "muted", style: { fontSize: 13 } }, "Nenhum personagem faz parte ainda."),
-                    React.createElement("div", { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } }, members.map(c => (React.createElement("span", { key: c.id, style: { display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 20, padding: '4px 10px', fontSize: 12.5 } },
-                        React.createElement("span", { className: "rank-badge " + rankClass(c.rank), style: { width: 18, height: 18, fontSize: 9, borderRadius: 4 } },
-                            React.createElement("span", null, c.rank)),
-                        c.name))))),
+                    (function () {
+                        const topMembers = members.filter(c => c.guild_featured);
+                        const otherMembers = members.filter(c => !c.guild_featured);
+                        function memberPill(c, featured) {
+                            return React.createElement("span", {
+                                key: c.id, style: {
+                                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                                    background: featured ? 'linear-gradient(135deg, rgba(255,210,60,.18), rgba(255,61,154,.12))' : 'var(--panel)',
+                                    border: '1px solid ' + (featured ? 'var(--gold)' : 'var(--border)'), borderRadius: 20, padding: '4px 10px', fontSize: 12.5,
+                                }
+                            },
+                                React.createElement("span", { className: "rank-badge " + rankClass(c.rank), style: { width: 18, height: 18, fontSize: 9, borderRadius: 4 } },
+                                    React.createElement("span", null, c.rank)),
+                                c.name,
+                                isAdmin && React.createElement("button", {
+                                    type: "button", title: featured ? 'Remover dos mais fortes' : 'Marcar como um dos mais fortes',
+                                    onClick: () => toggleFeatured(c),
+                                    style: { background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, marginLeft: 2, padding: 0, lineHeight: 1, opacity: featured ? 1 : .5 }
+                                }, "\u2B50"));
+                        }
+                        return (React.createElement(React.Fragment, null,
+                            topMembers.length > 0 && (React.createElement("div", { style: { marginBottom: 14 } },
+                                React.createElement("div", { className: "attr-label", style: { marginBottom: 8, color: 'var(--gold)' } }, "\uD83C\uDFC6 Membros mais fortes"),
+                                React.createElement("div", { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } }, topMembers.map(c => memberPill(c, true))))),
+                            React.createElement("div", { className: "attr-label", style: { marginBottom: 8 } },
+                                "Membros (",
+                                members.length,
+                                ")"),
+                            members.length === 0 && React.createElement("p", { className: "muted", style: { fontSize: 13 } }, "Nenhum personagem faz parte ainda."),
+                            otherMembers.length > 0 && React.createElement("div", { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } }, otherMembers.map(c => memberPill(c, false))),
+                            isAdmin && members.length > 0 && React.createElement("p", { className: "muted", style: { fontSize: 11.5, marginTop: 8 } }, "Clique na \u2B50 de um membro pra marc\u00E1-lo (ou desmarc\u00E1-lo) como um dos mais fortes da guilda.")));
+                    })()),
                 isAdmin && (React.createElement("div", { style: { display: 'flex', gap: 10 } },
                     React.createElement("button", { className: "btn-ghost btn-sm", onClick: () => startEdit(openGuild) }, "Editar"),
                     React.createElement("button", { className: "btn-danger", onClick: () => remove(openGuild.id) }, "Apagar"))))))));
