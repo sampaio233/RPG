@@ -592,7 +592,7 @@ function GuildsView({ profile, toast }) {
     async function load() {
         const { data } = await supabase.from('guilds').select('*').order('name');
         setGuilds(data || []);
-        const { data: chars } = await supabase.from('characters').select('id,name,avatar_url,rank,guild_id,guild_featured').eq('status', 'aprovado');
+        const { data: chars } = await supabase.from('characters').select('id,name,avatar_url,rank,guild_id,guild_featured,guild_role,category,status').or('status.eq.aprovado,category.eq.secundario');
         setCharacters(chars || []);
         const { data: locs } = await supabase.from('map_locations').select('id,name').order('name');
         setLocations(locs || []);
@@ -775,6 +775,7 @@ function GuildsView({ profile, toast }) {
                                 React.createElement("span", { className: "rank-badge " + rankClass(c.rank), style: { width: 18, height: 18, fontSize: 9, borderRadius: 4 } },
                                     React.createElement("span", null, c.rank)),
                                 c.name,
+                                c.guild_role && React.createElement("span", { style: { color: 'var(--cyan)', fontSize: 11 } }, "\u00B7 " + c.guild_role),
                                 isAdmin && React.createElement("button", {
                                     type: "button", title: featured ? 'Remover dos mais fortes' : 'Marcar como um dos mais fortes',
                                     onClick: () => toggleFeatured(c),
@@ -1377,9 +1378,9 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
         if (!char.current_location_id)
             return;
         const { data } = await supabase.from('characters')
-            .select('id,name,owner_id')
+            .select('id,name,owner_id,category,status')
             .eq('current_location_id', char.current_location_id)
-            .eq('status', 'aprovado')
+            .or('status.eq.aprovado,category.eq.secundario')
             .neq('id', char.id);
         setLocalChars(data || []);
     }
@@ -1414,7 +1415,7 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
     async function approveCharacter() {
         const { error } = await supabase.from('characters').update({
             status: 'aprovado', origin_story: originStory, current_location_id: form.current_location_id || char.current_location_id,
-            class_id: form.class_id || null, race_id: form.race_id || null, guild_id: form.guild_id || null,
+            class_id: form.class_id || null, race_id: form.race_id || null, guild_id: form.guild_id || null, guild_role: form.guild_role || null,
             rejection_reason: null,
         }).eq('id', char.id);
         if (error) {
@@ -1491,7 +1492,7 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
             name: form.name, title: form.title, appearance: form.appearance, power: form.power,
             affiliation: form.affiliation, status: form.status, rank: form.rank, bio_public: form.bio_public,
             admin_notes: form.admin_notes, owner_id: form.owner_id || null, category: form.category || 'principal',
-            class_id: form.class_id || null, race_id: form.race_id || null, guild_id: form.guild_id || null,
+            class_id: form.class_id || null, race_id: form.race_id || null, guild_id: form.guild_id || null, guild_role: form.guild_role || null,
             forca: form.forca, agilidade: form.agilidade, inteligencia: form.inteligencia,
             hp_max: form.hp_max, mp_max: form.mp_max,
         }).eq('id', char.id);
@@ -1639,6 +1640,9 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
                             " ",
                             g.name)))),
                 React.createElement("div", { className: "field" },
+                    React.createElement("label", null, "Cargo / posi\u00E7\u00E3o na guilda"),
+                    React.createElement("input", { value: form.guild_role || '', onChange: e => setForm(Object.assign(Object.assign({}, form), { guild_role: e.target.value })), placeholder: "Ex: L\u00EDder, Bra\u00E7o direito, Recruta..." })),
+                React.createElement("div", { className: "field" },
                     React.createElement("label", null, "Local de nascimento"),
                     React.createElement("select", { value: form.current_location_id || '', onChange: e => setForm(Object.assign(Object.assign({}, form), { current_location_id: e.target.value })) },
                         React.createElement("option", { value: "" }, "\u2014 nenhum \u2014"),
@@ -1672,7 +1676,8 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
                         React.createElement("p", { style: { marginTop: 8 } },
                             React.createElement("b", null, "Cl\u00E3/Guilda:"),
                             " ",
-                            React.createElement("span", { className: "muted" }, (guilds.find(g => g.id === char.guild_id) || {}).name || '—')),
+                            React.createElement("span", { className: "muted" }, (guilds.find(g => g.id === char.guild_id) || {}).name || '—'),
+                            char.guild_role && React.createElement("span", { style: { color: 'var(--cyan)' } }, " \u00B7 " + char.guild_role)),
                         React.createElement("p", { style: { marginTop: 8 } },
                             React.createElement("b", null, "Afilia\u00E7\u00E3o:"),
                             " ",
@@ -2163,6 +2168,9 @@ function CharacterSheet({ char, profile, onClose, onChanged, toast }) {
                                     g.icon,
                                     " ",
                                     g.name)))),
+                        React.createElement("div", { className: "field" },
+                            React.createElement("label", null, "Cargo / posi\u00E7\u00E3o na guilda"),
+                            React.createElement("input", { value: form.guild_role || '', onChange: e => setForm(Object.assign(Object.assign({}, form), { guild_role: e.target.value })), placeholder: "Ex: L\u00EDder, Bra\u00E7o direito, Recruta..." })),
                         React.createElement("div", { className: "field" },
                             React.createElement("label", null, "Rank"),
                             React.createElement("select", { value: form.rank, onChange: e => setForm(Object.assign(Object.assign({}, form), { rank: e.target.value })) },
